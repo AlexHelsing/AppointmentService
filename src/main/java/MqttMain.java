@@ -1,28 +1,40 @@
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.gson.Gson;
+import com.mongodb.client.*;
+import org.bson.Document;
 import org.bson.codecs.configuration.CodecProvider;
 import org.bson.codecs.configuration.CodecRegistry;
 import org.bson.codecs.pojo.PojoCodecProvider;
 import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
+
 import javax.net.ssl.SSLSocketFactory;
-
-import static com.mongodb.MongoClientSettings.getDefaultCodecRegistry;
-import static java.nio.charset.StandardCharsets.UTF_8;
-
-import static com.mongodb.client.model.Filters.eq;
-import static org.bson.codecs.configuration.CodecRegistries.fromProviders;
-import static org.bson.codecs.configuration.CodecRegistries.fromRegistries;
-
-import org.bson.Document;
-import com.mongodb.client.MongoClient;
-import com.mongodb.client.MongoClients;
-import com.mongodb.client.MongoCollection;
-import com.mongodb.client.MongoDatabase;
-
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.mongodb.MongoClientSettings.getDefaultCodecRegistry;
+import static com.mongodb.client.model.Filters.eq;
+import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.bson.codecs.configuration.CodecRegistries.fromProviders;
+import static org.bson.codecs.configuration.CodecRegistries.fromRegistries;
+
 
 public class MqttMain {
+
+    // MongoDB
+    static String MongoDbURI = AppConfig.getMongodbUri();
+
+    // MQTT Connection
+    static String MqttURI = AppConfig.getMqttUri();
+    static String MqttUsername = AppConfig.getMqttUsername();
+    static String MqttPassword = AppConfig.getMqttPassword();
+
+    // TOPICS
+
+    static String createAppointment = "/appointment/create";
+    static String requestAppointment = "/appointment/request";
+    static String testing = "/testing";
 
 
     public static void main(String[] args) throws MqttException {
@@ -30,18 +42,17 @@ public class MqttMain {
         CodecProvider pojoCodecProvider = PojoCodecProvider.builder().automatic(true).build();
         CodecRegistry pojoCodecRegistry = fromRegistries(getDefaultCodecRegistry(), fromProviders(pojoCodecProvider));
 
-        String uri = AppConfig.getMongodbUri();
-
+        Gson gson = new Gson();
 
         MqttClient client = new MqttClient(
-                AppConfig.getMqttUri(), // serverURI in format:
+                MqttURI, // serverURI in format:
                 // "protocol://name:port"
                 MqttClient.generateClientId(), // ClientId
                 new MemoryPersistence()); // Persistence
 
         MqttConnectOptions mqttConnectOptions = new MqttConnectOptions();
-        mqttConnectOptions.setUserName(AppConfig.getMqttUsername());
-        mqttConnectOptions.setPassword(AppConfig.getMqttPassword().toCharArray());
+        mqttConnectOptions.setUserName(MqttUsername);
+        mqttConnectOptions.setPassword(MqttPassword.toCharArray());
         // using the default socket factory
         mqttConnectOptions.setSocketFactory(SSLSocketFactory.getDefault());
         client.connect(mqttConnectOptions);
@@ -56,36 +67,61 @@ public class MqttMain {
 
             @Override
             public void messageArrived(String topic, MqttMessage message) {
-                System.out.println(topic + ": ");
-                if(topic.equals("/user/request")){
-                    byte[] payload = message.getPayload();
-                    String text = new String(payload, UTF_8);
-                    try (MongoClient mongoClient = MongoClients.create(uri)) {
-                        MongoDatabase database = mongoClient.getDatabase("users");
-                        MongoCollection<Document> collection = database.getCollection("users");
-                        Document doc = collection.find(eq("userName", text)).first();
-                        if (doc != null) {
-                            System.out.println(doc.toJson());
-                        } else {
-                            System.out.println("No matching documents found.");
+                System.out.println("Received message on " + topic + ": ");
+                byte[] payload = message.getPayload();
+                String text = new String(payload, UTF_8);
+
+                switch (topic) {
+                    case "/appointment/request":
+                        try (MongoClient mongoClient = MongoClients.create(MongoDbURI)) {
+                            MongoDatabase database = mongoClient.getDatabase("appointments");
+                            MongoCollection<Document> collection = database.getCollection("appointment");
+                            Document query = new Document("patient", text);
+                            FindIterable<Document> matchingDocs = collection.find(query);
+                            Document patientExists = collection.find(eq("patient", text)).first();
+                            if (patientExists != null) {
+                                List<String> docJsonList = new ArrayList<>();
+                                for (Document document : matchingDocs) {
+                                    String docJson = document.toJson();
+                                    docJsonList.add(docJson);
+                                }
+                                String jsonArray = "[" + String.join(",", docJsonList) + "]";
+                                //String appointmentRequest = String.format("/appointment/request/%s", "patient");
+                                //String docJson = doc.toJson();
+                                System.out.println(jsonArray);
+                                byte[] messagePayload = jsonArray.getBytes();
+                                MqttMessage publishMessage = new MqttMessage(messagePayload);
+                                client.publish("/appointment/request/user", publishMessage);
+                            } else {
+                                System.out.println("No matching documents found.");
+                            }
+                        } catch (MqttException e) {
+                            throw new RuntimeException(e);
                         }
-                    }
-                }
-                else if(topic.equals("/user/create")){
-                    byte[] payload = message.getPayload();
-                    String text = new String(payload, UTF_8);
-                    String [] usernamePassword = text.split(" ");
-                try (MongoClient mongoClient = MongoClients.create(uri)) {
-                    MongoDatabase database = mongoClient.getDatabase("users").withCodecRegistry(pojoCodecRegistry);
-                    MongoCollection<User> collection = database.getCollection("users", User.class);
-                    User user = new User(usernamePassword[0], usernamePassword[1]);
-                    collection.insertOne(user);
-                    System.out.println("Created new user: " + user.getUserName() + " Password: " + user.getPassword());
-                    List<User> users = new ArrayList<>();
-                    collection.find().into(users);
-                    System.out.println(users);
+                        break;
+                    case "/appointment/create":
+                        try (MongoClient mongoClient = MongoClients.create(MongoDbURI)) {
+                            MongoDatabase database = mongoClient.getDatabase("appointments").withCodecRegistry(pojoCodecRegistry);
+                            MongoCollection<Appointment> collection = database.getCollection("appointment", Appointment.class);
+                            ObjectMapper objectMapper = new ObjectMapper();
+                            objectMapper.findAndRegisterModules();
+                            Appointment appointment = objectMapper.readValue(text, Appointment.class);
+                            collection.insertOne(appointment);
+                            System.out.println("Successfully created new appointment. \n" + " Patient:  " + appointment.getPatient()  + " \n Dentist: " + appointment.getDentist() + " \n Date and time: " + appointment.getDateTime());
+                            //List<Appointment> appointments = new ArrayList<>();
+                            //collection.find().into(appointments);
+                            //System.out.println(appointments);
+                            break;
+                        } catch (JsonProcessingException e) {
+                            throw new RuntimeException(e);
                         }
-                    }}
+                    case "/testing":
+                            System.out.println(text);
+
+                            break;
+                        }
+            }
+
 
             @Override
             // Called when an outgoing publish is complete
@@ -94,9 +130,12 @@ public class MqttMain {
             }
         });
 
-        client.subscribe("/user/create", 1); // subscribe to everything with QoS = 1
-        client.subscribe("/user/request", 1); // subscribe to everything with QoS = 1
+        client.subscribe(createAppointment, 1); // subscribe to everything with QoS = 1
+        client.subscribe(requestAppointment, 1); // subscribe to everything with QoS = 1
+        client.subscribe(testing, 1); // subscribe to everything with QoS = 1
 
     }
+
+
 
 }

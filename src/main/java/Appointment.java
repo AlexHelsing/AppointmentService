@@ -1,29 +1,32 @@
+import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.bson.types.ObjectId;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.util.Date;
 
 public class Appointment {
 
 
     public Appointment () {}
 
+    @JsonProperty("appointment_id")
     private ObjectId appointmentId;
 
+    @JsonProperty("patient")
     private String patient;
 
+    @JsonProperty("dentist")
     private String dentist;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm")
+    private LocalDateTime dateTime;
 
-    private LocalDate date;
 
-    private LocalTime time;
-
-    public Appointment(String patient, String dentist, LocalDate date, LocalTime time){
+    public Appointment(String patient, String dentist, LocalDateTime dateTime){
         this.patient = patient;
         this.dentist = dentist;
-        this.date = date;
-        this.time = time;
+        this.dateTime = dateTime;
     }
 
     public ObjectId getAppointmentId() {
@@ -46,19 +49,15 @@ public class Appointment {
         this.dentist = dentist;
     }
 
-    public LocalDate getDate() {
-        return date;
+    public LocalDateTime getDateTime() {
+        return dateTime;
     }
 
-    public void setDate(LocalDate date) {
-        this.date = date;
+    public void setDateTime(LocalDateTime dateTime) {
+        this.dateTime = dateTime;
     }
 
-    public LocalTime getTime() {
-        return time;
-    }
-
-    public void setTime(LocalTime time) {
-        this.time = time;
+    public String toString(){
+        return String.format("Patient: %s " + "Dentist: %s" + "Date and time: %s ", getPatient(), getDentist(), getDateTime());
     }
 }
