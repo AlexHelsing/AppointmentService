@@ -130,11 +130,17 @@ public class MqttMain {
                             if (cancelAppointment != null){
                                 collection.deleteOne(query);
                                 System.out.println("Deleted appointment");
+                                String cancelMessagePayload = "Deleted appointment successfully";
+                                byte[] cancelMessage = cancelMessagePayload.getBytes();
+                                MqttMessage publishMessage = new MqttMessage(cancelMessage);
+                                client.publish("/patient/cancel_appointment/response", publishMessage);
                             }
                             else{
                                 System.out.println("No document found");
                                 }
-                            }
+                            } catch (MqttException e) {
+                            throw new RuntimeException(e);
+                        }
                         break;
             }}
 
