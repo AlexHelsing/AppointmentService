@@ -6,6 +6,7 @@ import org.bson.Document;
 import org.bson.codecs.configuration.CodecProvider;
 import org.bson.codecs.configuration.CodecRegistry;
 import org.bson.codecs.pojo.PojoCodecProvider;
+import org.bson.types.ObjectId;
 import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 
@@ -32,9 +33,10 @@ public class MqttMain {
 
     // TOPICS
 
-    static String createAppointment = "/appointment/create";
-    static String requestAppointment = "/appointment/request";
-    static String testing = "/testing";
+    static String patientCreateAppointment = "/patient/create_appointment";
+
+    static String patientRequestAppointment = "/patient/get_appointments/";
+    static String patientCancelAppointment = "/patient/cancel_appointment";
 
 
     public static void main(String[] args) throws MqttException {
@@ -72,12 +74,13 @@ public class MqttMain {
                 String text = new String(payload, UTF_8);
 
                 switch (topic) {
-                    case "/appointment/request":
+                    case "/patient/get_appointments/":
                         try (MongoClient mongoClient = MongoClients.create(MongoDbURI)) {
                             MongoDatabase database = mongoClient.getDatabase("appointments");
                             MongoCollection<Document> collection = database.getCollection("appointment");
                             Document query = new Document("patient", text);
                             FindIterable<Document> matchingDocs = collection.find(query);
+                            // Find better solution for this check. It queries only to check if ptient exists.
                             Document patientExists = collection.find(eq("patient", text)).first();
                             if (patientExists != null) {
                                 List<String> docJsonList = new ArrayList<>();
@@ -99,7 +102,7 @@ public class MqttMain {
                             throw new RuntimeException(e);
                         }
                         break;
-                    case "/appointment/create":
+                    case "/patient/create_appointment":
                         try (MongoClient mongoClient = MongoClients.create(MongoDbURI)) {
                             MongoDatabase database = mongoClient.getDatabase("appointments").withCodecRegistry(pojoCodecRegistry);
                             MongoCollection<Appointment> collection = database.getCollection("appointment", Appointment.class);
@@ -107,7 +110,8 @@ public class MqttMain {
                             objectMapper.findAndRegisterModules();
                             Appointment appointment = objectMapper.readValue(text, Appointment.class);
                             collection.insertOne(appointment);
-                            System.out.println("Successfully created new appointment. \n" + " Patient:  " + appointment.getPatient()  + " \n Dentist: " + appointment.getDentist() + " \n Date and time: " + appointment.getDateTime());
+                            System.out.println("Successfully created new appointment. \n" + " Patient:  " + appointment.getPatient()  + " \n Dentist: " + appointment.getDentist()
+                                    + " \n Date and time: " + appointment.getDateTime() + "\n id: " + appointment.getAppointmentId());
                             //List<Appointment> appointments = new ArrayList<>();
                             //collection.find().into(appointments);
                             //System.out.println(appointments);
@@ -115,12 +119,24 @@ public class MqttMain {
                         } catch (JsonProcessingException e) {
                             throw new RuntimeException(e);
                         }
-                    case "/testing":
-                            System.out.println(text);
-
-                            break;
-                        }
-            }
+                    case "/patient/cancel_appointment":
+                        System.out.println(text);
+                        try (MongoClient mongoClient = MongoClients.create(MongoDbURI)) {
+                            MongoDatabase database = mongoClient.getDatabase("appointments").withCodecRegistry(pojoCodecRegistry);
+                            MongoCollection<Document> collection = database.getCollection("appointment");
+                            ObjectId objectIdToQuery = new ObjectId(text);
+                            Document query = new Document("_id", objectIdToQuery);
+                            Document cancelAppointment = collection.find(query).first();
+                            if (cancelAppointment != null){
+                                collection.deleteOne(query);
+                                System.out.println("Deleted appointment");
+                            }
+                            else{
+                                System.out.println("No document found");
+                                }
+                            }
+                        break;
+            }}
 
 
             @Override
@@ -130,9 +146,9 @@ public class MqttMain {
             }
         });
 
-        client.subscribe(createAppointment, 1); // subscribe to everything with QoS = 1
-        client.subscribe(requestAppointment, 1); // subscribe to everything with QoS = 1
-        client.subscribe(testing, 1); // subscribe to everything with QoS = 1
+        client.subscribe(patientCreateAppointment, 1); // subscribe to everything with QoS = 1
+        client.subscribe(patientRequestAppointment, 1); // subscribe to everything with QoS = 1
+        client.subscribe(patientCancelAppointment, 1); // subscribe to everything with QoS = 1
 
     }
 
