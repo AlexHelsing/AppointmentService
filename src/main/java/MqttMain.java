@@ -74,14 +74,32 @@ public class MqttMain {
                 String text = new String(payload, UTF_8);
 
                 switch (topic) {
+                    case "/dentist/add_appointment_slot/":
+                        try (MongoClient mongoClient = MongoClients.create(MongoDbURI)) {
+                            MongoDatabase database = mongoClient.getDatabase("appointments").withCodecRegistry(pojoCodecRegistry);
+                            MongoCollection<Appointment> collection = database.getCollection("appointment", Appointment.class);
+                            ObjectMapper objectMapper = new ObjectMapper();
+                            objectMapper.findAndRegisterModules();
+                            Appointment appointment = objectMapper.readValue(text, Appointment.class);
+                            collection.insertOne(appointment);
+                            System.out.println("Added slot successfully: \n " + appointment);
+                            String addedSlot = "Added slot successfully: \n " + appointment;
+                            byte[] addedSlotByte = addedSlot.getBytes();
+                            MqttMessage addedSlotMsg = new MqttMessage(addedSlotByte);
+                            client.publish("/dentist/add_appointment_slot/res", addedSlotMsg);
+
+                        } catch (JsonProcessingException | MqttException e) {
+                            throw new RuntimeException(e);
+                        }
+                        break;
                     case "/patient/get_appointments/":
                         try (MongoClient mongoClient = MongoClients.create(MongoDbURI)) {
                             MongoDatabase database = mongoClient.getDatabase("appointments");
                             MongoCollection<Document> collection = database.getCollection("appointment");
-                            Document query = new Document("patient", text);
+                            Document query = new Document("patientId", text);
                             FindIterable<Document> matchingDocs = collection.find(query);
                             // Find better solution for this check. It queries only to check if ptient exists.
-                            Document patientExists = collection.find(eq("patient", text)).first();
+                            Document patientExists = collection.find(eq("patientId", text)).first();
                             if (patientExists != null) {
                                 List<String> docJsonList = new ArrayList<>();
                                 for (Document document : matchingDocs) {
@@ -110,8 +128,8 @@ public class MqttMain {
                             objectMapper.findAndRegisterModules();
                             Appointment appointment = objectMapper.readValue(text, Appointment.class);
                             collection.insertOne(appointment);
-                            System.out.println("Successfully created new appointment. \n" + " Patient:  " + appointment.getPatient()  + " \n Dentist: " + appointment.getDentist()
-                                    + " \n Date and time: " + appointment.getDateTime() + "\n id: " + appointment.getAppointmentId());
+                            System.out.println("Successfully created new appointment. \n" + " Patient:  " + appointment.getPatientId()  + " \n Dentist: " + appointment.getDentistId()
+                                    + " \n Date and time: " + "\n id: " + appointment.getAppointmentId());
                             //List<Appointment> appointments = new ArrayList<>();
                             //collection.find().into(appointments);
                             //System.out.println(appointments);
@@ -129,7 +147,7 @@ public class MqttMain {
                             Document cancelAppointment = collection.find(query).first();
                             if (cancelAppointment != null){
                                 collection.deleteOne(query);
-                                System.out.println("Deleted appointment");
+                                System.out.println("Deleted appointment id " + text);
                                 String cancelMessagePayload = "Deleted appointment successfully";
                                 byte[] cancelMessage = cancelMessagePayload.getBytes();
                                 MqttMessage publishMessage = new MqttMessage(cancelMessage);
@@ -155,9 +173,7 @@ public class MqttMain {
         client.subscribe(patientCreateAppointment, 1); // subscribe to everything with QoS = 1
         client.subscribe(patientRequestAppointment, 1); // subscribe to everything with QoS = 1
         client.subscribe(patientCancelAppointment, 1); // subscribe to everything with QoS = 1
+        client.subscribe("/dentist/add_appointment_slot/", 1);
 
     }
-
-
-
 }
