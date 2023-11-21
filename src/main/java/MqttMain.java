@@ -1,11 +1,11 @@
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.util.JSONPObject;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.mongodb.client.*;
 import com.mongodb.client.model.FindOneAndUpdateOptions;
 import com.mongodb.client.model.ReturnDocument;
+import com.mongodb.client.result.InsertOneResult;
 import org.bson.Document;
 import org.bson.codecs.configuration.CodecProvider;
 import org.bson.codecs.configuration.CodecRegistry;
@@ -16,6 +16,7 @@ import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 
 import javax.net.ssl.SSLSocketFactory;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 
 import static com.mongodb.MongoClientSettings.getDefaultCodecRegistry;
@@ -79,6 +80,29 @@ public class MqttMain {
                 String text = new String(payload, UTF_8);
 
                 switch (topic) {
+                    case "Patient/get_all_appointments/req":
+                        try (MongoClient mongoClient = MongoClients.create(MongoDbURI)) {
+                            MongoDatabase database = mongoClient.getDatabase("appointments").withCodecRegistry(pojoCodecRegistry);
+                            MongoCollection<Document> collection = database.getCollection("appointment");
+                            FindIterable<Document> matchingDocs = collection.find();
+                            System.out.println("Hello");
+                            List<String> docJsonList = new ArrayList<>();
+                            for (Document document : matchingDocs) {
+                                String docJson = document.toJson();
+                                docJsonList.add(docJson);
+                            }
+                            String jsonArray = "[" + String.join(",", docJsonList) + "]";
+                            System.out.println(jsonArray);
+                            byte[] messagePayload = jsonArray.getBytes();
+                            MqttMessage publishMessage = new MqttMessage(messagePayload);
+                            client.publish("Patient/get_all_appointments/res", publishMessage);
+
+                        } catch (MqttException e) {
+                            throw new RuntimeException(e);
+                        }
+
+
+                        break;
                     case "Dentist/add_appointment_slots/req":
                         try (MongoClient mongoClient = MongoClients.create(MongoDbURI)) {
                             MongoDatabase database = mongoClient.getDatabase("appointments").withCodecRegistry(pojoCodecRegistry);
@@ -86,13 +110,14 @@ public class MqttMain {
                             ObjectMapper objectMapper = new ObjectMapper();
                             objectMapper.findAndRegisterModules();
                             Appointment appointment = objectMapper.readValue(text, Appointment.class);
-                            collection.insertOne(appointment);
-                            String addedSlot = "Added slot successfully: ";
-                            byte[] addedSlotByte = addedSlot.getBytes();
-                            MqttMessage addedSlotMsg = new MqttMessage(addedSlotByte);
-                            client.publish("/Dentist/add_appointment_slot/res", addedSlotMsg);
+                            InsertOneResult newAppointment = collection.insertOne(appointment);
+                            if(newAppointment.wasAcknowledged()){
+                                String addedSlot = appointment.toJson();
+                                byte[] addedSlotByte = addedSlot.getBytes();
+                                MqttMessage addedSlotMsg = new MqttMessage(addedSlotByte);
+                                client.publish("/Dentist/add_appointment_slot/res", addedSlotMsg);
 
-                        } catch (JsonProcessingException | MqttException e) {
+                        }} catch (JsonProcessingException | MqttException e) {
                             throw new RuntimeException(e);
                         }
                         break;
@@ -181,6 +206,7 @@ public class MqttMain {
         client.subscribe(patientRequestAppointment, 1); // subscribe to everything with QoS = 1
         client.subscribe(patientCancelAppointment, 1); // subscribe to everything with QoS = 1
         client.subscribe(dentistCreateSlotAppointment, 1);
+        client.subscribe("Patient/get_all_appointments/req", 1);
 
     }
 }
