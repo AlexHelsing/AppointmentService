@@ -1,11 +1,12 @@
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import org.bson.Document;
 import org.bson.types.ObjectId;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
 
-public class Appointment {
+public class Appointment extends Document {
 
     public Appointment () {}
 
@@ -20,7 +21,7 @@ public class Appointment {
 
 
     @JsonProperty("isBooked")
-    private boolean isBooked = false;
+    private boolean isBooked;
 
     @JsonProperty("date")
     private LocalDate date;
@@ -31,9 +32,10 @@ public class Appointment {
     private LocalTime endTime;
 
 
-    public Appointment(String patientId, String dentistId, LocalDate date, LocalTime startTime, LocalTime endTime){
+    public Appointment(String patientId, String dentistId, boolean isBooked, LocalDate date, LocalTime startTime, LocalTime endTime){
         this.patientId = patientId;
         this.dentistId = dentistId;
+        this.isBooked = isBooked;
         this.date = date;
         this.startTime = startTime;
         this.endTime = endTime;

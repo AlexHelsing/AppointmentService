@@ -1,7 +1,11 @@
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.util.JSONPObject;
 import com.google.gson.Gson;
+import com.google.gson.JsonObject;
 import com.mongodb.client.*;
+import com.mongodb.client.model.FindOneAndUpdateOptions;
+import com.mongodb.client.model.ReturnDocument;
 import org.bson.Document;
 import org.bson.codecs.configuration.CodecProvider;
 import org.bson.codecs.configuration.CodecRegistry;
@@ -33,10 +37,11 @@ public class MqttMain {
 
     // TOPICS
 
-    static String patientCreateAppointment = "/patient/create_appointment";
+    static String dentistCreateSlotAppointment = "Dentist/add_appointment_slots/req";
+    static String patientCreateAppointment = "Patient/make_appointment/req";
 
-    static String patientRequestAppointment = "/patient/get_appointments/";
-    static String patientCancelAppointment = "/patient/cancel_appointment";
+    static String patientRequestAppointment = "Patient/get_appointments/req";
+    static String patientCancelAppointment = "Patient/cancel_appointment/req";
 
 
     public static void main(String[] args) throws MqttException {
@@ -74,7 +79,7 @@ public class MqttMain {
                 String text = new String(payload, UTF_8);
 
                 switch (topic) {
-                    case "/dentist/add_appointment_slot/":
+                    case "Dentist/add_appointment_slots/req":
                         try (MongoClient mongoClient = MongoClients.create(MongoDbURI)) {
                             MongoDatabase database = mongoClient.getDatabase("appointments").withCodecRegistry(pojoCodecRegistry);
                             MongoCollection<Appointment> collection = database.getCollection("appointment", Appointment.class);
@@ -82,17 +87,16 @@ public class MqttMain {
                             objectMapper.findAndRegisterModules();
                             Appointment appointment = objectMapper.readValue(text, Appointment.class);
                             collection.insertOne(appointment);
-                            System.out.println("Added slot successfully: \n " + appointment);
-                            String addedSlot = "Added slot successfully: \n " + appointment;
+                            String addedSlot = "Added slot successfully: ";
                             byte[] addedSlotByte = addedSlot.getBytes();
                             MqttMessage addedSlotMsg = new MqttMessage(addedSlotByte);
-                            client.publish("/dentist/add_appointment_slot/res", addedSlotMsg);
+                            client.publish("/Dentist/add_appointment_slot/res", addedSlotMsg);
 
                         } catch (JsonProcessingException | MqttException e) {
                             throw new RuntimeException(e);
                         }
                         break;
-                    case "/patient/get_appointments/":
+                    case "Patient/get_appointments/req":
                         try (MongoClient mongoClient = MongoClients.create(MongoDbURI)) {
                             MongoDatabase database = mongoClient.getDatabase("appointments");
                             MongoCollection<Document> collection = database.getCollection("appointment");
@@ -120,24 +124,27 @@ public class MqttMain {
                             throw new RuntimeException(e);
                         }
                         break;
-                    case "/patient/create_appointment":
+                    case "Patient/make_appointment/req":
                         try (MongoClient mongoClient = MongoClients.create(MongoDbURI)) {
                             MongoDatabase database = mongoClient.getDatabase("appointments").withCodecRegistry(pojoCodecRegistry);
                             MongoCollection<Appointment> collection = database.getCollection("appointment", Appointment.class);
-                            ObjectMapper objectMapper = new ObjectMapper();
-                            objectMapper.findAndRegisterModules();
-                            Appointment appointment = objectMapper.readValue(text, Appointment.class);
-                            collection.insertOne(appointment);
-                            System.out.println("Successfully created new appointment. \n" + " Patient:  " + appointment.getPatientId()  + " \n Dentist: " + appointment.getDentistId()
-                                    + " \n Date and time: " + "\n id: " + appointment.getAppointmentId());
-                            //List<Appointment> appointments = new ArrayList<>();
-                            //collection.find().into(appointments);
-                            //System.out.println(appointments);
-                            break;
-                        } catch (JsonProcessingException e) {
+                            Document jsonDocument = Document.parse(text);
+                            String newPatientId = jsonDocument.getString("patientId");
+                            Document query = new Document("_id", new ObjectId(jsonDocument.getString("_id")));
+                            Document update = new Document("$set", new Document("patientId", newPatientId)
+                                    .append("isBooked", "true"));
+                            FindOneAndUpdateOptions options = new FindOneAndUpdateOptions().returnDocument(ReturnDocument.AFTER);
+                            Appointment updatedDocument = collection.findOneAndUpdate(query, update, options);
+                            if (updatedDocument != null){
+                            String updatedJson = updatedDocument.toJson();
+                            byte[] bookedMessage = updatedJson.getBytes();
+                            MqttMessage publishMessage = new MqttMessage(bookedMessage);
+                            client.publish("Patient/make_appointment/res", publishMessage);
+                        }} catch (MqttException e) {
                             throw new RuntimeException(e);
                         }
-                    case "/patient/cancel_appointment":
+                        break;
+                    case "Patient/cancel_appointment/req":
                         System.out.println(text);
                         try (MongoClient mongoClient = MongoClients.create(MongoDbURI)) {
                             MongoDatabase database = mongoClient.getDatabase("appointments").withCodecRegistry(pojoCodecRegistry);
@@ -173,7 +180,7 @@ public class MqttMain {
         client.subscribe(patientCreateAppointment, 1); // subscribe to everything with QoS = 1
         client.subscribe(patientRequestAppointment, 1); // subscribe to everything with QoS = 1
         client.subscribe(patientCancelAppointment, 1); // subscribe to everything with QoS = 1
-        client.subscribe("/dentist/add_appointment_slot/", 1);
+        client.subscribe(dentistCreateSlotAppointment, 1);
 
     }
 }
