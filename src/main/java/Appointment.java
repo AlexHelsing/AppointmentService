@@ -1,7 +1,6 @@
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.bson.Document;
-import org.bson.types.ObjectId;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -9,9 +8,6 @@ import java.time.LocalTime;
 public class Appointment extends Document {
 
     public Appointment () {}
-
-    @JsonProperty("appointment_id")
-    private final ObjectId appointmentId = new ObjectId();
 
     @JsonProperty("patientId")
     private String patientId;
@@ -39,10 +35,6 @@ public class Appointment extends Document {
         this.date = date;
         this.startTime = startTime;
         this.endTime = endTime;
-    }
-
-    public ObjectId getAppointmentId() {
-        return appointmentId;
     }
 
     public String getPatientId() {
