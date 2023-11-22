@@ -1,5 +1,6 @@
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mongodb.MongoException;
 import com.mongodb.client.*;
 import com.mongodb.client.model.FindOneAndUpdateOptions;
 import com.mongodb.client.model.ReturnDocument;
@@ -40,7 +41,7 @@ public class MqttMain {
     static String patientRequestAppointment = "Patient/get_appointments/req";
     static String patientCancelAppointment = "Patient/cancel_appointment/req";
 
-    // Codec 
+    // Codec
     static CodecProvider pojoCodecProvider = PojoCodecProvider.builder().automatic(true).build();
     static CodecRegistry pojoCodecRegistry = fromRegistries(getDefaultCodecRegistry(), fromProviders(pojoCodecProvider));
 
@@ -70,9 +71,9 @@ public class MqttMain {
 
             @Override
             public void messageArrived(String topic, MqttMessage message) {
-                System.out.println("Received message on " + topic + ": ");
                 byte[] payload = message.getPayload();
                 String text = new String(payload, UTF_8);
+                System.out.println("Received message on " + topic + " \nMessage: " + text);
 
                 switch (topic) {
                     case "Patient/get_all_appointments/req":
@@ -119,29 +120,28 @@ public class MqttMain {
                         try (MongoClient mongoClient = MongoClients.create(MongoDbURI)) {
                             MongoDatabase database = mongoClient.getDatabase("appointments");
                             MongoCollection<Document> collection = database.getCollection("appointment");
-                            Document query = new Document("patientId", text);
+                            Document jsonDocument = Document.parse(text);
+                            String queryPatientId = jsonDocument.getString("patientId");
+                            Document query = new Document("patientId", queryPatientId);
                             FindIterable<Document> matchingDocs = collection.find(query);
-                            // TODO: Find better solution for this check. It queries only to check if patient exists then queries again for action.
-                            Document patientExists = collection.find(eq("patientId", text)).first();
-                            if (patientExists != null) {
-                                List<String> docJsonList = new ArrayList<>();
-                                for (Document document : matchingDocs) {
-                                    String docJson = document.toJson();
-                                    docJsonList.add(docJson);
-                                }
-                                String jsonArray = "[" + String.join(",", docJsonList) + "]";
-                                System.out.println(jsonArray);
-                                byte[] messagePayload = jsonArray.getBytes();
-                                MqttMessage publishMessage = new MqttMessage(messagePayload);
-                                client.publish("Patient/get_appointments/res", publishMessage);
-                            } else {
-                                System.out.println("No matching documents found.");
+
+                            List<String> docJsonList = new ArrayList<>();
+                            for (Document doc : matchingDocs) {
+                                String docJson = doc.toJson();
+                                docJsonList.add(docJson);
                             }
+
+                            String jsonArray = "[" + String.join(",", docJsonList) + "]";
+                            System.out.println(jsonArray);
+
+                            byte[] messagePayload = jsonArray.getBytes();
+                            MqttMessage publishMessage = new MqttMessage(messagePayload);
+                            client.publish("/appointment/request/user", publishMessage);
+
                         } catch (MqttException e) {
                             throw new RuntimeException(e);
                         }
                         break;
-
                     case "Patient/make_appointment/req":
                         try (MongoClient mongoClient = MongoClients.create(MongoDbURI)) {
                             MongoDatabase database = mongoClient.getDatabase("appointments").withCodecRegistry(pojoCodecRegistry);
