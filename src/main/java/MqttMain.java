@@ -1,7 +1,5 @@
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.gson.Gson;
-import com.google.gson.JsonObject;
 import com.mongodb.client.*;
 import com.mongodb.client.model.FindOneAndUpdateOptions;
 import com.mongodb.client.model.ReturnDocument;
@@ -16,7 +14,6 @@ import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 
 import javax.net.ssl.SSLSocketFactory;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 
 import static com.mongodb.MongoClientSettings.getDefaultCodecRegistry;
@@ -40,17 +37,15 @@ public class MqttMain {
 
     static String dentistCreateSlotAppointment = "Dentist/add_appointment_slots/req";
     static String patientCreateAppointment = "Patient/make_appointment/req";
-
     static String patientRequestAppointment = "Patient/get_appointments/req";
     static String patientCancelAppointment = "Patient/cancel_appointment/req";
 
+    // Codec 
+    static CodecProvider pojoCodecProvider = PojoCodecProvider.builder().automatic(true).build();
+    static CodecRegistry pojoCodecRegistry = fromRegistries(getDefaultCodecRegistry(), fromProviders(pojoCodecProvider));
+
 
     public static void main(String[] args) throws MqttException {
-
-        CodecProvider pojoCodecProvider = PojoCodecProvider.builder().automatic(true).build();
-        CodecRegistry pojoCodecRegistry = fromRegistries(getDefaultCodecRegistry(), fromProviders(pojoCodecProvider));
-
-        Gson gson = new Gson();
 
         MqttClient client = new MqttClient(
                 MqttURI, // serverURI in format:
@@ -81,11 +76,11 @@ public class MqttMain {
 
                 switch (topic) {
                     case "Patient/get_all_appointments/req":
+                        // For now, this returns EVERY appointment in the whole database collection.
                         try (MongoClient mongoClient = MongoClients.create(MongoDbURI)) {
                             MongoDatabase database = mongoClient.getDatabase("appointments").withCodecRegistry(pojoCodecRegistry);
                             MongoCollection<Document> collection = database.getCollection("appointment");
                             FindIterable<Document> matchingDocs = collection.find();
-                            System.out.println("Hello");
                             List<String> docJsonList = new ArrayList<>();
                             for (Document document : matchingDocs) {
                                 String docJson = document.toJson();
@@ -96,13 +91,11 @@ public class MqttMain {
                             byte[] messagePayload = jsonArray.getBytes();
                             MqttMessage publishMessage = new MqttMessage(messagePayload);
                             client.publish("Patient/get_all_appointments/res", publishMessage);
-
                         } catch (MqttException e) {
                             throw new RuntimeException(e);
                         }
-
-
                         break;
+
                     case "Dentist/add_appointment_slots/req":
                         try (MongoClient mongoClient = MongoClients.create(MongoDbURI)) {
                             MongoDatabase database = mongoClient.getDatabase("appointments").withCodecRegistry(pojoCodecRegistry);
@@ -121,13 +114,14 @@ public class MqttMain {
                             throw new RuntimeException(e);
                         }
                         break;
+
                     case "Patient/get_appointments/req":
                         try (MongoClient mongoClient = MongoClients.create(MongoDbURI)) {
                             MongoDatabase database = mongoClient.getDatabase("appointments");
                             MongoCollection<Document> collection = database.getCollection("appointment");
                             Document query = new Document("patientId", text);
                             FindIterable<Document> matchingDocs = collection.find(query);
-                            // Find better solution for this check. It queries only to check if ptient exists.
+                            // TODO: Find better solution for this check. It queries only to check if patient exists then queries again for action.
                             Document patientExists = collection.find(eq("patientId", text)).first();
                             if (patientExists != null) {
                                 List<String> docJsonList = new ArrayList<>();
@@ -136,12 +130,10 @@ public class MqttMain {
                                     docJsonList.add(docJson);
                                 }
                                 String jsonArray = "[" + String.join(",", docJsonList) + "]";
-                                //String appointmentRequest = String.format("/appointment/request/%s", "patient");
-                                //String docJson = doc.toJson();
                                 System.out.println(jsonArray);
                                 byte[] messagePayload = jsonArray.getBytes();
                                 MqttMessage publishMessage = new MqttMessage(messagePayload);
-                                client.publish("/appointment/request/user", publishMessage);
+                                client.publish("Patient/get_appointments/res", publishMessage);
                             } else {
                                 System.out.println("No matching documents found.");
                             }
@@ -149,6 +141,7 @@ public class MqttMain {
                             throw new RuntimeException(e);
                         }
                         break;
+
                     case "Patient/make_appointment/req":
                         try (MongoClient mongoClient = MongoClients.create(MongoDbURI)) {
                             MongoDatabase database = mongoClient.getDatabase("appointments").withCodecRegistry(pojoCodecRegistry);
@@ -161,14 +154,16 @@ public class MqttMain {
                             FindOneAndUpdateOptions options = new FindOneAndUpdateOptions().returnDocument(ReturnDocument.AFTER);
                             Appointment updatedDocument = collection.findOneAndUpdate(query, update, options);
                             if (updatedDocument != null){
-                            String updatedJson = updatedDocument.toJson();
-                            byte[] bookedMessage = updatedJson.getBytes();
-                            MqttMessage publishMessage = new MqttMessage(bookedMessage);
-                            client.publish("Patient/make_appointment/res", publishMessage);
-                        }} catch (MqttException e) {
+                                String updatedJson = updatedDocument.toJson();
+                                byte[] bookedMessage = updatedJson.getBytes();
+                                MqttMessage publishMessage = new MqttMessage(bookedMessage);
+                                client.publish("Patient/make_appointment/res", publishMessage);
+                                }
+                        } catch (MqttException e) {
                             throw new RuntimeException(e);
                         }
                         break;
+
                     case "Patient/cancel_appointment/req":
                         System.out.println(text);
                         try (MongoClient mongoClient = MongoClients.create(MongoDbURI)) {
@@ -176,6 +171,7 @@ public class MqttMain {
                             MongoCollection<Document> collection = database.getCollection("appointment");
                             ObjectId objectIdToQuery = new ObjectId(text);
                             Document query = new Document("_id", objectIdToQuery);
+                            // TODO: Check if better solution for querying then removing. Probably there is
                             Document cancelAppointment = collection.find(query).first();
                             if (cancelAppointment != null){
                                 collection.deleteOne(query);
@@ -192,8 +188,7 @@ public class MqttMain {
                             throw new RuntimeException(e);
                         }
                         break;
-            }}
-
+                     }}
 
             @Override
             // Called when an outgoing publish is complete

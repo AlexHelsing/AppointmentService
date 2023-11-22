@@ -87,6 +87,9 @@ public class Appointment extends Document {
 
 
     public String toString(){
-        return String.format("Patient: %s " + "Dentist: %s" + "Date: %s Starting: %s Ending: %s", getPatientId(), getDentistId(), getDate(), getStartTime(), getEndTime());
+        return String.format("""
+                Patient: %s\s
+                Dentist: %s\s
+                Date: %s Starting at: %s Ending at: %s""", getPatientId(), getDentistId(), getDate(), getStartTime(), getEndTime());
     }
 }
