@@ -136,8 +136,7 @@ public class MqttMain {
 
                             byte[] messagePayload = jsonArray.getBytes();
                             MqttMessage publishMessage = new MqttMessage(messagePayload);
-                            client.publish("/appointment/request/user", publishMessage);
-
+                            client.publish("Patient/get_appointments/res", publishMessage);
                         } catch (MqttException e) {
                             throw new RuntimeException(e);
                         }
@@ -169,22 +168,34 @@ public class MqttMain {
                         try (MongoClient mongoClient = MongoClients.create(MongoDbURI)) {
                             MongoDatabase database = mongoClient.getDatabase("appointments").withCodecRegistry(pojoCodecRegistry);
                             MongoCollection<Document> collection = database.getCollection("appointment");
-                            ObjectId objectIdToQuery = new ObjectId(text);
-                            Document query = new Document("_id", objectIdToQuery);
+                            Document jsonDocument = Document.parse(text);
+                            String queryAppointmentId = jsonDocument.getString("_id");
+                            ObjectId queryId = new ObjectId(queryAppointmentId);
+                            Document query = new Document("_id", queryId);
                             // TODO: Check if better solution for querying then removing. Probably there is
-                            Document cancelAppointment = collection.find(query).first();
-                            if (cancelAppointment != null){
-                                collection.deleteOne(query);
-                                System.out.println("Deleted appointment id " + text);
-                                String cancelMessagePayload = "Deleted appointment successfully";
+                            if(collection.find(query).first() != null){
+                                if (collection.deleteOne(query).wasAcknowledged()){
+                                    String cancelMessagePayload = "Deleted appointment successfully";
+                                    byte[] cancelMessage = cancelMessagePayload.getBytes();
+                                    MqttMessage publishMessage = new MqttMessage(cancelMessage);
+                                    client.publish("/Patient/cancel_appointment/res", publishMessage);
+                                    }
+                                else{
+                                    System.out.println("Failed to delete data");
+                                    String cancelMessagePayload = "Failed to delete";
+                                    byte[] cancelMessage = cancelMessagePayload.getBytes();
+                                    MqttMessage publishMessage = new MqttMessage(cancelMessage);
+                                    client.publish("/Patient/cancel_appointment/res", publishMessage);
+                                }
+                            }
+                        else{
+                                System.out.println("No documents found");
+                                String cancelMessagePayload = "No document found";
                                 byte[] cancelMessage = cancelMessagePayload.getBytes();
                                 MqttMessage publishMessage = new MqttMessage(cancelMessage);
-                                client.publish("/patient/cancel_appointment/response", publishMessage);
-                            }
-                            else{
-                                System.out.println("No document found");
-                                }
-                            } catch (MqttException e) {
+                                client.publish("/Patient/cancel_appointment/res", publishMessage);
+                        }
+                        } catch (MqttException e) {
                             throw new RuntimeException(e);
                         }
                         break;
