@@ -81,14 +81,17 @@ public class MqttMain {
                         try (MongoClient mongoClient = MongoClients.create(MongoDbURI)) {
                             MongoDatabase database = mongoClient.getDatabase("appointments").withCodecRegistry(pojoCodecRegistry);
                             MongoCollection<Document> collection = database.getCollection("appointment");
+                            // Find all documents in collection and add to JSON list
                             FindIterable<Document> matchingDocs = collection.find();
                             List<String> docJsonList = new ArrayList<>();
                             for (Document document : matchingDocs) {
                                 String docJson = document.toJson();
                                 docJsonList.add(docJson);
                             }
+                            // Create JSON array from docJsonList
                             String jsonArray = "[" + String.join(",", docJsonList) + "]";
                             System.out.println(jsonArray);
+                            // Create MQTT message of String and publish
                             byte[] messagePayload = jsonArray.getBytes();
                             MqttMessage publishMessage = new MqttMessage(messagePayload);
                             client.publish("Patient/get_all_appointments/res", publishMessage);
@@ -101,17 +104,20 @@ public class MqttMain {
                         try (MongoClient mongoClient = MongoClients.create(MongoDbURI)) {
                             MongoDatabase database = mongoClient.getDatabase("appointments").withCodecRegistry(pojoCodecRegistry);
                             MongoCollection<Appointment> collection = database.getCollection("appointment", Appointment.class);
+                            // Read from JSON and create a POJO object to insert to database
                             ObjectMapper objectMapper = new ObjectMapper();
                             objectMapper.findAndRegisterModules();
                             Appointment appointment = objectMapper.readValue(text, Appointment.class);
                             InsertOneResult newAppointment = collection.insertOne(appointment);
+                            // If insertion is acknowledged, publish to response topic
                             if(newAppointment.wasAcknowledged()){
                                 String addedSlot = appointment.toJson();
                                 byte[] addedSlotByte = addedSlot.getBytes();
                                 MqttMessage addedSlotMsg = new MqttMessage(addedSlotByte);
                                 client.publish("/Dentist/add_appointment_slot/res", addedSlotMsg);
 
-                        }} catch (JsonProcessingException | MqttException e) {
+                            }
+                        } catch (JsonProcessingException | MqttException e) {
                             throw new RuntimeException(e);
                         }
                         break;
@@ -120,17 +126,18 @@ public class MqttMain {
                         try (MongoClient mongoClient = MongoClients.create(MongoDbURI)) {
                             MongoDatabase database = mongoClient.getDatabase("appointments");
                             MongoCollection<Document> collection = database.getCollection("appointment");
+                            // Parse and query database with the patientId string in payload text
                             Document jsonDocument = Document.parse(text);
                             String queryPatientId = jsonDocument.getString("patientId");
                             Document query = new Document("patientId", queryPatientId);
                             FindIterable<Document> matchingDocs = collection.find(query);
-
+                            // Find and add all the matches of the query to docJsonList
                             List<String> docJsonList = new ArrayList<>();
                             for (Document doc : matchingDocs) {
                                 String docJson = doc.toJson();
                                 docJsonList.add(docJson);
                             }
-
+                            // Create Json format, format to MQTT message and publish to response topic
                             String jsonArray = "[" + String.join(",", docJsonList) + "]";
                             System.out.println(jsonArray);
 
@@ -147,6 +154,7 @@ public class MqttMain {
                             MongoCollection<Appointment> collection = database.getCollection("appointment", Appointment.class);
                             Document jsonDocument = Document.parse(text);
                             String newPatientId = jsonDocument.getString("patientId");
+                            // Find matching appointmentId in db, append patientID + change boolean isBooked to "true"
                             Document query = new Document("_id", new ObjectId(jsonDocument.getString("_id")));
                             Document update = new Document("$set", new Document("patientId", newPatientId)
                                     .append("isBooked", "true"));
