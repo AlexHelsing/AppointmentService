@@ -129,6 +129,7 @@ public class MqttMain {
                             // Parse and query database with the patientId string in payload text
                             Document jsonDocument = Document.parse(text);
                             String queryPatientId = jsonDocument.getString("patientId");
+                            String responseTopic = jsonDocument.getString("responseTopic");
                             Document query = new Document("patientId", queryPatientId);
                             FindIterable<Document> matchingDocs = collection.find(query);
                             // Find and add all the matches of the query to docJsonList
@@ -140,10 +141,10 @@ public class MqttMain {
                             // Create Json format, format to MQTT message and publish to response topic
                             String jsonArray = "[" + String.join(",", docJsonList) + "]";
                             System.out.println(jsonArray);
-
+                            String mqttResponseTopic = String.format("Patient/%s/get_appointments/res", responseTopic);
                             byte[] messagePayload = jsonArray.getBytes();
                             MqttMessage publishMessage = new MqttMessage(messagePayload);
-                            client.publish("Patient/get_appointments/res", publishMessage);
+                            client.publish(mqttResponseTopic, publishMessage);
                         } catch (MqttException e) {
                             throw new RuntimeException(e);
                         }
@@ -153,7 +154,10 @@ public class MqttMain {
                             MongoDatabase database = mongoClient.getDatabase("appointments").withCodecRegistry(pojoCodecRegistry);
                             MongoCollection<Appointment> collection = database.getCollection("appointment", Appointment.class);
                             Document jsonDocument = Document.parse(text);
+                            System.out.println(jsonDocument);
                             String newPatientId = jsonDocument.getString("patientId");
+                            String responseTopic = jsonDocument.getString("responseTopic");
+                            System.out.println(responseTopic);
                             // Find matching appointmentId in db, append patientID + change boolean isBooked to "true"
                             Document query = new Document("_id", new ObjectId(jsonDocument.getString("_id")));
                             Document update = new Document("$set", new Document("patientId", newPatientId)
@@ -161,10 +165,11 @@ public class MqttMain {
                             FindOneAndUpdateOptions options = new FindOneAndUpdateOptions().returnDocument(ReturnDocument.AFTER);
                             Appointment updatedDocument = collection.findOneAndUpdate(query, update, options);
                             if (updatedDocument != null){
+                                String mqttResponseTopic = String.format("Patient/%s/make_appointment/res", responseTopic);
                                 String updatedJson = updatedDocument.toJson();
                                 byte[] bookedMessage = updatedJson.getBytes();
                                 MqttMessage publishMessage = new MqttMessage(bookedMessage);
-                                client.publish("Patient/make_appointment/res", publishMessage);
+                                client.publish(mqttResponseTopic, publishMessage);
                                 }
                         } catch (MqttException e) {
                             throw new RuntimeException(e);
@@ -178,6 +183,7 @@ public class MqttMain {
                             MongoCollection<Document> collection = database.getCollection("appointment");
                             Document jsonDocument = Document.parse(text);
                             String queryAppointmentId = jsonDocument.getString("_id");
+                            String responseTopic = jsonDocument.getString("responseTopic");
                             ObjectId queryId = new ObjectId(queryAppointmentId);
                             Document query = new Document("_id", queryId);
                             // TODO: Check if better solution for querying then removing. Probably there is
@@ -186,7 +192,8 @@ public class MqttMain {
                                     String cancelMessagePayload = "Deleted appointment successfully";
                                     byte[] cancelMessage = cancelMessagePayload.getBytes();
                                     MqttMessage publishMessage = new MqttMessage(cancelMessage);
-                                    client.publish("/Patient/cancel_appointment/res", publishMessage);
+                                    String mqttResponseTopic = String.format("Patient/%s/cancel_appointment/res", responseTopic);
+                                    client.publish(mqttResponseTopic, publishMessage);
                                     }
                                 else{
                                     System.out.println("Failed to delete data");
