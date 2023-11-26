@@ -1,5 +1,7 @@
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.mongodb.MongoException;
 import com.mongodb.client.*;
 import com.mongodb.client.model.FindOneAndUpdateOptions;
@@ -106,15 +108,20 @@ public class MqttMain {
                             MongoCollection<Appointment> collection = database.getCollection("appointment", Appointment.class);
                             // Read from JSON and create a POJO object to insert to database
                             ObjectMapper objectMapper = new ObjectMapper();
+                            JsonNode jsonNode = objectMapper.readTree(text);
+                            String responseTopic = jsonNode.get("responseTopic").asText();
+                            ((ObjectNode) jsonNode).remove("responseTopic");
+                            String jsonWithoutResponseTopic = jsonNode.toString();
                             objectMapper.findAndRegisterModules();
-                            Appointment appointment = objectMapper.readValue(text, Appointment.class);
+                            Appointment appointment = objectMapper.readValue(jsonWithoutResponseTopic, Appointment.class);
                             InsertOneResult newAppointment = collection.insertOne(appointment);
                             // If insertion is acknowledged, publish to response topic
                             if(newAppointment.wasAcknowledged()){
+                                String mqttResponseTopic = String.format("Dentist/%s/add_appointment_slot/res", responseTopic);
                                 String addedSlot = appointment.toJson();
                                 byte[] addedSlotByte = addedSlot.getBytes();
                                 MqttMessage addedSlotMsg = new MqttMessage(addedSlotByte);
-                                client.publish("/Dentist/add_appointment_slot/res", addedSlotMsg);
+                                client.publish(mqttResponseTopic, addedSlotMsg);
 
                             }
                         } catch (JsonProcessingException | MqttException e) {
