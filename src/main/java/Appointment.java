@@ -15,6 +15,8 @@ public class Appointment extends Document {
     @JsonProperty("dentistId")
     private String dentistId;
 
+    //@JsonProperty("clinicId")
+    //private String clinicId;
 
     @JsonProperty("isBooked")
     private boolean isBooked;
@@ -31,6 +33,7 @@ public class Appointment extends Document {
     public Appointment(String patientId, String dentistId, boolean isBooked, LocalDate date, LocalTime startTime, LocalTime endTime){
         this.patientId = patientId;
         this.dentistId = dentistId;
+        //this.clinicId = clinicId;
         this.isBooked = isBooked;
         this.date = date;
         this.startTime = startTime;

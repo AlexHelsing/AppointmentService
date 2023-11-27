@@ -1,4 +1,5 @@
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -17,6 +18,7 @@ import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 
 import javax.net.ssl.SSLSocketFactory;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import static com.mongodb.MongoClientSettings.getDefaultCodecRegistry;
@@ -221,6 +223,36 @@ public class MqttMain {
                             throw new RuntimeException(e);
                         }
                         break;
+
+                    case "Clinic/get_appointments/req":
+                        try (MongoClient mongoClient = MongoClients.create(MongoDbURI)) {
+                            MongoDatabase database = mongoClient.getDatabase("appointments");
+                            MongoCollection<Document> collection = database.getCollection("appointment");
+                            // Parse and query database with the patientId string in payload text
+                            ObjectMapper objectMapper = new ObjectMapper();
+                            JsonNode jsonNode = objectMapper.readTree(text);
+                            String responseTopic = jsonNode.get("responseTopic").asText();
+                            ((ObjectNode) jsonNode).remove("responseTopic");
+                            String jsonWithoutResponseTopic = jsonNode.toString();
+                            Document filter = new Document("dentistId", new Document("$in", jsonWithoutResponseTopic));
+                            List<Document> matchingAppointments = collection.find(filter).into(new ArrayList<>());
+                            ArrayList<String> docJsonList = new ArrayList<>();
+                            for (Document appointment : matchingAppointments) {
+                                String docJson = appointment.toJson();
+                                docJsonList.add(docJson);
+                            }
+                            // Create Json format, format to MQTT message and publish to response topic
+                            String jsonArray = "[" + String.join(",", docJsonList) + "]";
+                            System.out.println(jsonArray);
+                            String mqttResponseTopic = String.format("Clinic/%s/get_appointments/res", responseTopic);
+                            byte[] messagePayload = jsonArray.getBytes();
+                            MqttMessage publishMessage = new MqttMessage(messagePayload);
+                            client.publish(mqttResponseTopic, publishMessage);
+                        } catch (MqttException | JsonProcessingException e) {
+                            throw new RuntimeException(e);
+                        }
+                        break;
+
                      }}
 
             @Override
