@@ -1,7 +1,9 @@
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.gson.JsonArray;
 import com.mongodb.client.*;
 import com.mongodb.client.model.FindOneAndUpdateOptions;
 import com.mongodb.client.model.ReturnDocument;
@@ -16,6 +18,7 @@ import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 
 import javax.net.ssl.SSLSocketFactory;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import static com.mongodb.MongoClientSettings.getDefaultCodecRegistry;
@@ -237,6 +240,7 @@ public class MqttMain {
         });
         // Clinic subscriptions
         client.subscribe(clinicGetAppointments, 1, (topic, message) -> {
+            long start = System.nanoTime();
             byte[] payload = message.getPayload();
             String text = new String(payload, UTF_8);
             System.out.println("Received message on " + topic + " \nMessage: " + text);
@@ -248,8 +252,9 @@ public class MqttMain {
                 JsonNode jsonNode = objectMapper.readTree(text);
                 String responseTopic = jsonNode.get("responseTopic").asText();
                 ((ObjectNode) jsonNode).remove("responseTopic");
-                String jsonWithoutResponseTopic = jsonNode.toString();
-                Document filter = new Document("dentistId", new Document("$in", jsonWithoutResponseTopic));
+                JsonNode dentistsNode = jsonNode.get("dentists");
+                List<String> dentistIds = objectMapper.convertValue(dentistsNode, new TypeReference<List<String>>() {});
+                Document filter = new Document("dentistId", new Document("$in", dentistIds));
                 List<Document> matchingAppointments = collection.find(filter).into(new ArrayList<>());
                 ArrayList<String> docJsonList = new ArrayList<>();
                 for (Document appointment : matchingAppointments) {
@@ -263,6 +268,9 @@ public class MqttMain {
                 byte[] messagePayload = jsonArray.getBytes();
                 MqttMessage publishMessage = new MqttMessage(messagePayload);
                 client.publish(mqttResponseTopic, publishMessage);
+                long finish = System.nanoTime();
+                long timeElapse = finish - start;
+                System.out.println(timeElapse/1000000);
             } catch (MqttException | JsonProcessingException e) {
                 throw new RuntimeException(e);
             }
