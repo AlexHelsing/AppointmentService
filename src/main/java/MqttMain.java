@@ -7,6 +7,7 @@ import com.google.gson.JsonArray;
 import com.mongodb.client.*;
 import com.mongodb.client.model.FindOneAndUpdateOptions;
 import com.mongodb.client.model.ReturnDocument;
+import com.mongodb.client.result.InsertManyResult;
 import com.mongodb.client.result.InsertOneResult;
 import org.bson.Document;
 import org.bson.codecs.configuration.CodecProvider;
@@ -38,7 +39,7 @@ public class MqttMain {
     static String MqttPassword = AppConfig.getMqttPassword();
 
     // TOPICS
-    static String dentistAddAppointmentSlot = "Dentist/add_appointment_slots/req";
+    static String dentistAddAppointmentSlot = "Clinic/post_slots/req";
     static String patientMakeAppointment = "Patient/make_appointment/req";
     static String patientGetAppointments = "Patient/get_appointments/req";
     static String patientGetAllAppointments = "Patient/get_all_appointments/req";
@@ -51,7 +52,7 @@ public class MqttMain {
 
 
     public static void main(String[] args) throws MqttException {
-
+        // setting the Mqtt connection
         MqttClient client = new MqttClient(
                 MqttURI, // serverURI in format:
                 // "protocol://name:port"
@@ -83,14 +84,14 @@ public class MqttMain {
             }
         });
 
+        //Setting the DB connection
+        MongoCollection<Appointment> collection = Utilities.getCollection();
         // Patient Subscriptions
         client.subscribe(patientMakeAppointment, 1, (topic, message) -> {
             byte[] payload = message.getPayload();
             String text = new String(payload, UTF_8);
             System.out.println("Received message on " + topic + " \nMessage: " + text);
-            try (MongoClient mongoClient = MongoClients.create(MongoDbURI)) {
-                MongoDatabase database = mongoClient.getDatabase("appointments").withCodecRegistry(pojoCodecRegistry);
-                MongoCollection<Appointment> collection = database.getCollection("appointment", Appointment.class);
+            try  {
                 Document jsonDocument = Document.parse(text);
                 System.out.println(jsonDocument);
                 String newPatientId = jsonDocument.getString("patientId");
@@ -117,15 +118,13 @@ public class MqttMain {
             byte[] payload = message.getPayload();
             String text = new String(payload, UTF_8);
             System.out.println("Received message on " + topic + " \nMessage: " + text);
-            try (MongoClient mongoClient = MongoClients.create(MongoDbURI)) {
-                MongoDatabase database = mongoClient.getDatabase("appointments");
-                MongoCollection<Document> collection = database.getCollection("appointment");
+            try  {
                 // Parse and query database with the patientId string in payload text
                 Document jsonDocument = Document.parse(text);
                 String queryPatientId = jsonDocument.getString("patientId");
                 String responseTopic = jsonDocument.getString("responseTopic");
                 Document query = new Document("patientId", queryPatientId);
-                FindIterable<Document> matchingDocs = collection.find(query);
+                FindIterable<Appointment> matchingDocs = collection.find(query);
                 // Find and add all the matches of the query to docJsonList
                 List<String> docJsonList = new ArrayList<>();
                 for (Document doc : matchingDocs) {
@@ -147,9 +146,7 @@ public class MqttMain {
             byte[] payload = message.getPayload();
             String text = new String(payload, UTF_8);
             System.out.println("Received message on " + topic + " \nMessage: " + text);
-            try (MongoClient mongoClient = MongoClients.create(MongoDbURI)) {
-                MongoDatabase database = mongoClient.getDatabase("appointments").withCodecRegistry(pojoCodecRegistry);
-                MongoCollection<Document> collection = database.getCollection("appointment");
+            try  {
                 Document jsonDocument = Document.parse(text);
                 String queryAppointmentId = jsonDocument.getString("_id");
                 String responseTopic = jsonDocument.getString("responseTopic");
@@ -187,11 +184,9 @@ public class MqttMain {
             byte[] payload = message.getPayload();
             String text = new String(payload, UTF_8);
             System.out.println("Received message on " + topic + " \nMessage: " + text);
-            try (MongoClient mongoClient = MongoClients.create(MongoDbURI)) {
-                MongoDatabase database = mongoClient.getDatabase("appointments").withCodecRegistry(pojoCodecRegistry);
-                MongoCollection<Document> collection = database.getCollection("appointment");
+            try {
                 // Find all documents in collection and add to JSON list
-                FindIterable<Document> matchingDocs = collection.find();
+                FindIterable<Appointment> matchingDocs = collection.find();
                 List<String> docJsonList = new ArrayList<>();
                 for (Document document : matchingDocs) {
                     String docJson = document.toJson();
@@ -213,25 +208,20 @@ public class MqttMain {
             byte[] payload = message.getPayload();
             String text = new String(payload, UTF_8);
             System.out.println("Received message on " + topic + " \nMessage: " + text);
-            try (MongoClient mongoClient = MongoClients.create(MongoDbURI)) {
-                MongoDatabase database = mongoClient.getDatabase("appointments").withCodecRegistry(pojoCodecRegistry);
-                MongoCollection<Appointment> collection = database.getCollection("appointment", Appointment.class);
+            try {
                 // Read from JSON and create a POJO object to insert to database
-                ObjectMapper objectMapper = new ObjectMapper();
-                JsonNode jsonNode = objectMapper.readTree(text);
-                String responseTopic = jsonNode.get("responseTopic").asText();
-                ((ObjectNode) jsonNode).remove("responseTopic");
-                String jsonWithoutResponseTopic = jsonNode.toString();
-                objectMapper.findAndRegisterModules();
-                Appointment appointment = objectMapper.readValue(jsonWithoutResponseTopic, Appointment.class);
-                InsertOneResult newAppointment = collection.insertOne(appointment);
+                ArrayList<Appointment> appointments = Utilities.convertToAppointmentArray(text);
+                String responseTopic = Utilities.extractResponseTopic(text);
+
+                InsertManyResult newAppointments = collection.insertMany(appointments);
                 // If insertion is acknowledged, publish to response topic
-                if(newAppointment.wasAcknowledged()){
-                    String mqttResponseTopic = String.format("Dentist/%s/add_appointment_slot/res", responseTopic);
-                    String addedSlot = appointment.toJson();
-                    byte[] addedSlotByte = addedSlot.getBytes();
-                    MqttMessage addedSlotMsg = new MqttMessage(addedSlotByte);
-                    client.publish(mqttResponseTopic, addedSlotMsg);
+                if(newAppointments.wasAcknowledged()){
+                    String mqttResponseTopic = String.format("Clinic/%s/post_slots/res", responseTopic);
+                    Result result = new Result(200, "Appointment slots were added successfully.");
+                    String resPayload = result.toJson();
+                    byte[] resPayloadBytes = resPayload.getBytes();
+                    MqttMessage response = new MqttMessage(resPayloadBytes);
+                    client.publish(mqttResponseTopic, response);
 
                 }
             } catch (JsonProcessingException | MqttException e) {
@@ -244,9 +234,7 @@ public class MqttMain {
             byte[] payload = message.getPayload();
             String text = new String(payload, UTF_8);
             System.out.println("Received message on " + topic + " \nMessage: " + text);
-            try (MongoClient mongoClient = MongoClients.create(MongoDbURI)) {
-                MongoDatabase database = mongoClient.getDatabase("appointments");
-                MongoCollection<Document> collection = database.getCollection("appointment");
+            try {
                 // Parse and query database with the patientId string in payload text
                 ObjectMapper objectMapper = new ObjectMapper();
                 JsonNode jsonNode = objectMapper.readTree(text);
@@ -275,8 +263,5 @@ public class MqttMain {
                 throw new RuntimeException(e);
             }
         });
-
-
-
     }
 }
