@@ -1,11 +1,13 @@
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import org.bson.Document;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
 
-public class Appointment extends Document {
+public class Appointment  {
 
     public Appointment () {}
 
@@ -88,11 +90,17 @@ public class Appointment extends Document {
         this.endTime = endTime;
     }
 
-
     public String toString(){
         return String.format("""
                 Patient: %s\s
                 Dentist: %s\s
                 Date: %s Starting at: %s Ending at: %s""", getPatientId(), getDentistId(), getDate(), getStartTime(), getEndTime());
+    }
+
+    public String toJSON() {
+        GsonBuilder gsonBuilder = new GsonBuilder();
+        gsonBuilder.setPrettyPrinting();
+        Gson gson = gsonBuilder.create();
+        return gson.toJson(this);
     }
 }

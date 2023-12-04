@@ -3,6 +3,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.mongodb.client.*;
 import com.mongodb.client.model.FindOneAndUpdateOptions;
@@ -18,6 +19,8 @@ import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 
 import javax.net.ssl.SSLSocketFactory;
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -85,7 +88,9 @@ public class MqttMain {
         });
 
         //Setting the DB connection
-        MongoCollection<Appointment> collection = Utilities.getCollection();
+        MongoClient mongoClient = MongoClients.create(AppConfig.getMongodbUri());
+        MongoCollection<Appointment> collection = Utilities.getCollection(mongoClient);
+
         // Patient Subscriptions
         client.subscribe(patientMakeAppointment, 1, (topic, message) -> {
             byte[] payload = message.getPayload();
@@ -105,7 +110,7 @@ public class MqttMain {
                 Appointment updatedDocument = collection.findOneAndUpdate(query, update, options);
                 if (updatedDocument != null){
                     String mqttResponseTopic = String.format("Patient/%s/make_appointment/res", responseTopic);
-                    String updatedJson = updatedDocument.toJson();
+                    String updatedJson = updatedDocument.toJSON();
                     byte[] bookedMessage = updatedJson.getBytes();
                     MqttMessage publishMessage = new MqttMessage(bookedMessage);
                     client.publish(mqttResponseTopic, publishMessage);
@@ -127,8 +132,8 @@ public class MqttMain {
                 FindIterable<Appointment> matchingDocs = collection.find(query);
                 // Find and add all the matches of the query to docJsonList
                 List<String> docJsonList = new ArrayList<>();
-                for (Document doc : matchingDocs) {
-                    String docJson = doc.toJson();
+                for (Appointment doc : matchingDocs) {
+                    String docJson = doc.toJSON();
                     docJsonList.add(docJson);
                 }
                 // Create Json format, format to MQTT message and publish to response topic
@@ -188,8 +193,8 @@ public class MqttMain {
                 // Find all documents in collection and add to JSON list
                 FindIterable<Appointment> matchingDocs = collection.find();
                 List<String> docJsonList = new ArrayList<>();
-                for (Document document : matchingDocs) {
-                    String docJson = document.toJson();
+                for (Appointment document : matchingDocs) {
+                    String docJson = document.toJSON();
                     docJsonList.add(docJson);
                 }
                 // Create JSON array from docJsonList
@@ -213,16 +218,20 @@ public class MqttMain {
                 ArrayList<Appointment> appointments = Utilities.convertToAppointmentArray(text);
                 String responseTopic = Utilities.extractResponseTopic(text);
 
+                System.out.println("Appointments: " + appointments);
+                System.out.println("responseTopic" + responseTopic);
+
                 InsertManyResult newAppointments = collection.insertMany(appointments);
                 // If insertion is acknowledged, publish to response topic
                 if(newAppointments.wasAcknowledged()){
                     String mqttResponseTopic = String.format("Clinic/%s/post_slots/res", responseTopic);
-                    Result result = new Result(200, "Appointment slots were added successfully.");
-                    String resPayload = result.toJson();
+
+                    Result result = new Result(201, "Appointment slots were added successfully.");
+                    String resPayload = result.toJSON();
                     byte[] resPayloadBytes = resPayload.getBytes();
                     MqttMessage response = new MqttMessage(resPayloadBytes);
-                    client.publish(mqttResponseTopic, response);
 
+                    client.publish(mqttResponseTopic, response);
                 }
             } catch (JsonProcessingException | MqttException e) {
                 throw new RuntimeException(e);
@@ -243,10 +252,10 @@ public class MqttMain {
                 JsonNode dentistsNode = jsonNode.get("dentists");
                 List<String> dentistIds = objectMapper.convertValue(dentistsNode, new TypeReference<List<String>>() {});
                 Document filter = new Document("dentistId", new Document("$in", dentistIds));
-                List<Document> matchingAppointments = collection.find(filter).into(new ArrayList<>());
+                List<Appointment> matchingAppointments = collection.find(filter).into(new ArrayList<>());
                 ArrayList<String> docJsonList = new ArrayList<>();
-                for (Document appointment : matchingAppointments) {
-                    String docJson = appointment.toJson();
+                for (Appointment appointment : matchingAppointments) {
+                    String docJson = appointment.toJSON();
                     docJsonList.add(docJson);
                 }
                 // Create Json format, format to MQTT message and publish to response topic

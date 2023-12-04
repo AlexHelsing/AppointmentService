@@ -63,15 +63,10 @@ public class Utilities {
         return responseTopic;
     }
 
-    public static MongoCollection<Appointment> getCollection() {
-        try (MongoClient mongoClient = MongoClients.create(AppConfig.getMongodbUri())) {
-            MongoDatabase database = mongoClient.getDatabase("appointments").withCodecRegistry(MqttMain.pojoCodecRegistry);
-            mongoClient.listDatabases().forEach(System.out::println);
-            database.listCollectionNames().forEach(System.out::println);
-            return database.getCollection("appointments", Appointment.class);
-        }
-
+    public static MongoCollection<Appointment> getCollection(MongoClient mongoClient) {
+        MongoDatabase database = mongoClient.getDatabase("Appointments").withCodecRegistry(MqttMain.pojoCodecRegistry);
+        mongoClient.listDatabases().forEach(System.out::println);
+        database.listCollectionNames().forEach(System.out::println);
+        return database.getCollection("appointments", Appointment.class);
     }
-
-
 }
