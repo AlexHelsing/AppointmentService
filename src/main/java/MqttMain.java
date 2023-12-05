@@ -250,7 +250,13 @@ public class MqttMain {
                 Result result = new Result(200, "Appointments were retrieved successfully.");
                 String resultJson = result.toJSON();
 
-                String resPayload = "[" + String.join(", ", jsonAppointments) + ","+ resultJson + "]";
+                String resPayload = "";
+                if(jsonAppointments.isEmpty()) {
+                    resPayload = "[" + resultJson + "]";
+                }
+                else {
+                    resPayload = "[" + String.join(", ", jsonAppointments) + "," + resultJson + "]";
+                }
                 System.out.println(resPayload);
 
                 String mqttResponseTopic = String.format("Clinic/%s/get_appointments/res", responseTopic);
