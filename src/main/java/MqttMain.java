@@ -1,28 +1,21 @@
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.gson.Gson;
-import com.google.gson.JsonArray;
 import com.mongodb.client.*;
+import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.FindOneAndUpdateOptions;
 import com.mongodb.client.model.ReturnDocument;
 import com.mongodb.client.result.InsertManyResult;
-import com.mongodb.client.result.InsertOneResult;
 import org.bson.Document;
 import org.bson.codecs.configuration.CodecProvider;
 import org.bson.codecs.configuration.CodecRegistry;
 import org.bson.codecs.pojo.PojoCodecProvider;
+import org.bson.conversions.Bson;
 import org.bson.types.ObjectId;
 import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 
 import javax.net.ssl.SSLSocketFactory;
-import java.time.LocalDate;
-import java.time.LocalTime;
+
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 import static com.mongodb.MongoClientSettings.getDefaultCodecRegistry;
@@ -53,7 +46,6 @@ public class MqttMain {
     static CodecProvider pojoCodecProvider = PojoCodecProvider.builder().automatic(true).build();
     static CodecRegistry pojoCodecRegistry = fromRegistries(getDefaultCodecRegistry(), fromProviders(pojoCodecProvider));
 
-
     public static void main(String[] args) throws MqttException {
         // setting the Mqtt connection
         MqttClient client = new MqttClient(
@@ -68,7 +60,6 @@ public class MqttMain {
         // using the default socket factory
         mqttConnectOptions.setSocketFactory(SSLSocketFactory.getDefault());
         client.connect(mqttConnectOptions);
-
 
         client.setCallback(new MqttCallback() {
             @Override
@@ -210,13 +201,12 @@ public class MqttMain {
         });
         // Dentist subscriptions
         client.subscribe(dentistAddAppointmentSlot, 1, (topic, message) -> {
-            byte[] payload = message.getPayload();
-            String text = new String(payload, UTF_8);
-            System.out.println("Received message on " + topic + " \nMessage: " + text);
+            String payload = Utilities.payloadToString(message.getPayload());
+            System.out.println("Received message on " + topic + " \nMessage: " + payload);
             try {
                 // Read from JSON and create a POJO object to insert to database
-                ArrayList<Appointment> appointments = Utilities.convertToAppointmentArray(text);
-                String responseTopic = Utilities.extractResponseTopic(text);
+                ArrayList<Appointment> appointments = Utilities.convertToAppointments(payload);
+                String responseTopic = Utilities.extractResponseTopic(payload);
 
                 System.out.println("Appointments: " + appointments);
                 System.out.println("responseTopic" + responseTopic);
@@ -239,35 +229,35 @@ public class MqttMain {
         });
         // Clinic subscriptions
         client.subscribe(clinicGetAppointments, 1, (topic, message) -> {
-            long start = System.nanoTime();
-            byte[] payload = message.getPayload();
-            String text = new String(payload, UTF_8);
-            System.out.println("Received message on " + topic + " \nMessage: " + text);
+            String payload = Utilities.payloadToString(message.getPayload());
+            System.out.println("Received message on " + topic + " \nMessage: " + payload);
             try {
-                // Parse and query database with the patientId string in payload text
-                ObjectMapper objectMapper = new ObjectMapper();
-                JsonNode jsonNode = objectMapper.readTree(text);
-                String responseTopic = jsonNode.get("responseTopic").asText();
-                ((ObjectNode) jsonNode).remove("responseTopic");
-                JsonNode dentistsNode = jsonNode.get("dentists");
-                List<String> dentistIds = objectMapper.convertValue(dentistsNode, new TypeReference<List<String>>() {});
-                Document filter = new Document("dentistId", new Document("$in", dentistIds));
-                List<Appointment> matchingAppointments = collection.find(filter).into(new ArrayList<>());
-                ArrayList<String> docJsonList = new ArrayList<>();
+                ArrayList<ObjectId> dentistIds = Utilities.convertToDentistIds(payload);
+                String responseTopic = Utilities.extractResponseTopic(payload);
+
+                // Query Appointments based on dentistIds
+                Bson filter = Filters.in("dentistId", dentistIds);
+                ArrayList<Appointment> matchingAppointments = collection.find().filter(filter).into(new ArrayList<>());
+                //System.out.println("Matching appointments: " +  matchingAppointments);
+
+                // Structure payload as an array of JSONs
+                ArrayList<String> jsonAppointments = new ArrayList<>();
                 for (Appointment appointment : matchingAppointments) {
-                    String docJson = appointment.toJSON();
-                    docJsonList.add(docJson);
+                    String jsonAppointment = appointment.toJSON();
+                    jsonAppointments.add(jsonAppointment);
                 }
-                // Create Json format, format to MQTT message and publish to response topic
-                String jsonArray = "[" + String.join(",", docJsonList) + "]";
-                System.out.println(jsonArray);
+
+                Result result = new Result(200, "Appointments were retrieved successfully.");
+                String resultJson = result.toJSON();
+
+                String resPayload = "[" + String.join(", ", jsonAppointments) + ","+ resultJson + "]";
+                System.out.println(resPayload);
+
                 String mqttResponseTopic = String.format("Clinic/%s/get_appointments/res", responseTopic);
-                byte[] messagePayload = jsonArray.getBytes();
+                byte[] messagePayload = resPayload.getBytes();
                 MqttMessage publishMessage = new MqttMessage(messagePayload);
+
                 client.publish(mqttResponseTopic, publishMessage);
-                long finish = System.nanoTime();
-                long timeElapse = finish - start;
-                System.out.println(timeElapse/1000000);
             } catch (MqttException | JsonProcessingException e) {
                 throw new RuntimeException(e);
             }

@@ -3,6 +3,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import org.bson.Document;
+import org.bson.types.ObjectId;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -12,10 +13,10 @@ public class Appointment  {
     public Appointment () {}
 
     @JsonProperty("patientId")
-    private String patientId;
+    private ObjectId patientId;
 
     @JsonProperty("dentistId")
-    private String dentistId;
+    private ObjectId dentistId;
 
     //@JsonProperty("clinicId")
     //private String clinicId;
@@ -23,7 +24,6 @@ public class Appointment  {
     @JsonProperty("isBooked")
     private boolean isBooked;
 
-    @JsonProperty("date")
     private LocalDate date;
 
     @JsonFormat(pattern = "HH:mm")
@@ -32,7 +32,7 @@ public class Appointment  {
     private LocalTime endTime;
 
 
-    public Appointment(String patientId, String dentistId, boolean isBooked, LocalDate date, LocalTime startTime, LocalTime endTime){
+    public Appointment(ObjectId patientId, ObjectId dentistId, boolean isBooked, LocalDate date, LocalTime startTime, LocalTime endTime){
         this.patientId = patientId;
         this.dentistId = dentistId;
         //this.clinicId = clinicId;
@@ -42,19 +42,25 @@ public class Appointment  {
         this.endTime = endTime;
     }
 
-    public String getPatientId() {
+    public Appointment(LocalDate date, LocalTime startTime, LocalTime endTime) {
+        this.date = date;
+        this.startTime = startTime;
+        this.endTime = endTime;
+    }
+
+    public ObjectId getPatientId() {
         return patientId;
     }
 
-    public void setPatientId(String patientId) {
+    public void setPatientId(ObjectId patientId) {
         this.patientId = patientId;
     }
 
-    public String getDentistId() {
+    public ObjectId getDentistId() {
         return dentistId;
     }
 
-    public void setDentistId(String dentistId) {
+    public void setDentistId(ObjectId dentistId) {
         this.dentistId = dentistId;
     }
 
@@ -100,7 +106,11 @@ public class Appointment  {
     public String toJSON() {
         GsonBuilder gsonBuilder = new GsonBuilder();
         gsonBuilder.setPrettyPrinting();
-        Gson gson = gsonBuilder.create();
+        Gson gson = gsonBuilder
+                .registerTypeAdapter(ObjectId.class, new MongoObjectIdTypeAdapter())
+                .registerTypeAdapter(LocalDate.class, new LocalDateTypeAdapter())
+                .registerTypeAdapter(LocalTime.class, new LocalTimeTypeAdapter())
+                .create();
         return gson.toJson(this);
     }
 }
