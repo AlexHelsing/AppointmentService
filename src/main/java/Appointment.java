@@ -1,48 +1,33 @@
-import com.fasterxml.jackson.annotation.JsonFormat;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import org.bson.Document;
 import org.bson.types.ObjectId;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
 
-public class Appointment  {
-
-    public Appointment () {}
-
-    @JsonProperty("patientId")
+public class Appointment {
+    private ObjectId _id;
     private ObjectId patientId;
 
-    @JsonProperty("dentistId")
     private ObjectId dentistId;
 
     //@JsonProperty("clinicId")
     //private String clinicId;
 
-    @JsonProperty("isBooked")
     private boolean isBooked;
 
     private LocalDate date;
 
-    @JsonFormat(pattern = "HH:mm")
     private LocalTime startTime;
-    @JsonFormat(pattern = "HH:mm")
+
     private LocalTime endTime;
 
-
-    public Appointment(ObjectId patientId, ObjectId dentistId, boolean isBooked, LocalDate date, LocalTime startTime, LocalTime endTime){
+    public Appointment() {}
+    public Appointment(ObjectId patientId, ObjectId dentistId, boolean isBooked, LocalDate date, LocalTime startTime, LocalTime endTime) {
         this.patientId = patientId;
         this.dentistId = dentistId;
         //this.clinicId = clinicId;
         this.isBooked = isBooked;
-        this.date = date;
-        this.startTime = startTime;
-        this.endTime = endTime;
-    }
-
-    public Appointment(LocalDate date, LocalTime startTime, LocalTime endTime) {
         this.date = date;
         this.startTime = startTime;
         this.endTime = endTime;
@@ -96,7 +81,14 @@ public class Appointment  {
         this.endTime = endTime;
     }
 
-    public String toString(){
+    public ObjectId getId() {
+        return this._id;
+    }
+
+    public void setId(ObjectId id) {
+        this._id = id;
+    }
+    public String toString() {
         return String.format("""
                 Patient: %s\s
                 Dentist: %s\s

@@ -237,12 +237,14 @@ public class MqttMain {
 
                 // Query Appointments based on dentistIds
                 Bson filter = Filters.in("dentistId", dentistIds);
-                ArrayList<Appointment> matchingAppointments = collection.find().filter(filter).into(new ArrayList<>());
+                ArrayList<Appointment> matchingAppointments = new ArrayList<Appointment>();
+                collection.find(filter).into(matchingAppointments);
                 //System.out.println("Matching appointments: " +  matchingAppointments);
 
                 // Structure payload as an array of JSONs
                 ArrayList<String> jsonAppointments = new ArrayList<>();
-                for (Appointment appointment : matchingAppointments) {
+                for (Appointment appointment :  matchingAppointments) {
+
                     String jsonAppointment = appointment.toJSON();
                     jsonAppointments.add(jsonAppointment);
                 }

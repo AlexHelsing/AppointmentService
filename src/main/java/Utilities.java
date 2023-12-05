@@ -36,6 +36,7 @@ public class Utilities {
                 Appointment appointment = new Appointment();
                 JsonNode element = jsonNode.get(i);
 
+                appointment.setId(new ObjectId());
                 appointment.setBooked(false);
                 String dentistId_string  = element.get("dentist_id").asText();
                 ObjectId dentistId = new ObjectId(dentistId_string);
