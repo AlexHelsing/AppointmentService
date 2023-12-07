@@ -20,6 +20,7 @@ import javax.net.ssl.SSLSocketFactory;
 import java.lang.reflect.Type;
 import java.time.LocalDate;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import static com.mongodb.MongoClientSettings.getDefaultCodecRegistry;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -339,10 +340,26 @@ public class MqttMain {
                     clinicAppointmentCounts.put(clinicId, clinicAppointmentCount);
                 }
 
+                clinicAppointmentCounts = clinicAppointmentCounts.entrySet()
+                        .stream()
+                        .sorted(Map.Entry.comparingByValue(Comparator.reverseOrder()))
+                        .collect(Collectors.toMap(
+                                Map.Entry::getKey,
+                                Map.Entry::getValue,
+                                (e1, e2) -> e1,
+                                LinkedHashMap::new
+                        ));
+
+                List<String> jsonResponse = new ArrayList<>();
+                for (Map.Entry<ObjectId, Long> entry : clinicAppointmentCounts.entrySet()) {
+                    Map<String, Object> clinicData = new HashMap<>();
+                    clinicData.put("clinicId", entry.getKey().toString());
+                    jsonResponse.add(clinicData.toString());
+                }
+
                 // JSON format crap builder
                 Gson gson = new Gson();
-                Type typeObject = new TypeToken<HashMap>() {}.getType();
-                String gsonData = gson.toJson(clinicAppointmentCounts, typeObject);
+                String gsonData = gson.toJson(jsonResponse);
 
                 Result result = new Result(200, "Appointments were retrieved successfully.");
                 String resultJson = result.toJSON();
