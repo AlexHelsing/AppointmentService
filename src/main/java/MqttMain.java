@@ -17,6 +17,8 @@ import javax.net.ssl.SSLSocketFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import static com.mongodb.MongoClientSettings.getDefaultCodecRegistry;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -47,6 +49,8 @@ public class MqttMain {
     static CodecRegistry pojoCodecRegistry = fromRegistries(getDefaultCodecRegistry(), fromProviders(pojoCodecProvider));
 
     public static void main(String[] args) throws MqttException {
+
+        ExecutorService service = Executors.newFixedThreadPool(16);
         // setting the Mqtt connection
         MqttClient client = new MqttClient(
                 MqttURI, // serverURI in format:
@@ -83,7 +87,7 @@ public class MqttMain {
         MongoCollection<Appointment> collection = Utilities.getCollection(mongoClient);
 
         // Patient Subscriptions
-        client.subscribe(patientMakeAppointment, 1, (topic, message) -> {
+        client.subscribe(patientMakeAppointment, 1, (topic, message) -> service.submit(() -> {
             byte[] payload = message.getPayload();
             String text = new String(payload, UTF_8);
             System.out.println("Received message on " + topic + " \nMessage: " + text);
@@ -109,8 +113,8 @@ public class MqttMain {
             } catch (MqttException e) {
                 throw new RuntimeException(e);
             }
-        });
-        client.subscribe(patientGetAppointments, 1, (topic, message) -> {
+        }));
+        client.subscribe(patientGetAppointments, 1, (topic, message) -> service.submit(() -> {
             byte[] payload = message.getPayload();
             String text = new String(payload, UTF_8);
             System.out.println("Received message on " + topic + " \nMessage: " + text);
@@ -137,8 +141,8 @@ public class MqttMain {
             } catch (MqttException e) {
                 throw new RuntimeException(e);
             }
-        });
-        client.subscribe(patientCancelAppointment, 1, (topic, message) -> {
+        }));
+        client.subscribe(patientCancelAppointment, 1, (topic, message) -> service.submit(() -> {
             byte[] payload = message.getPayload();
             String text = new String(payload, UTF_8);
             System.out.println("Received message on " + topic + " \nMessage: " + text);
@@ -175,8 +179,8 @@ public class MqttMain {
             } catch (MqttException e) {
                 throw new RuntimeException(e);
             }
-        });
-        client.subscribe(patientGetAllAppointments, 1, (topic, message) -> {
+        }));
+        client.subscribe(patientGetAllAppointments, 1, (topic, message) -> service.submit(() -> {
             byte[] payload = message.getPayload();
             String text = new String(payload, UTF_8);
             System.out.println("Received message on " + topic + " \nMessage: " + text);
@@ -198,9 +202,9 @@ public class MqttMain {
             } catch (MqttException e) {
                 throw new RuntimeException(e);
             }
-        });
+        }));
         // Dentist subscriptions
-        client.subscribe(dentistAddAppointmentSlot, 1, (topic, message) -> {
+        client.subscribe(dentistAddAppointmentSlot, 1, (topic, message) -> service.submit(() -> {
             String payload = Utilities.payloadToString(message.getPayload());
             System.out.println("Received message on " + topic + " \nMessage: " + payload);
             try {
@@ -223,12 +227,12 @@ public class MqttMain {
 
                     client.publish(mqttResponseTopic, response);
                 }
-            } catch (JsonProcessingException | MqttException e) {
+            } catch (Exception e) {
                 throw new RuntimeException(e);
             }
-        });
+        }));
         // Clinic subscriptions
-        client.subscribe(clinicGetAppointments, 1, (topic, message) -> {
+        client.subscribe(clinicGetAppointments, 1, (topic, message) -> service.submit(() -> {
             String payload = Utilities.payloadToString(message.getPayload());
             System.out.println("Received message on " + topic + " \nMessage: " + payload);
             try {
@@ -266,9 +270,9 @@ public class MqttMain {
                 MqttMessage publishMessage = new MqttMessage(messagePayload);
 
                 client.publish(mqttResponseTopic, publishMessage);
-            } catch (MqttException | JsonProcessingException e) {
+            } catch (Exception e) {
                 throw new RuntimeException(e);
             }
-        });
+        }));
     }
 }
