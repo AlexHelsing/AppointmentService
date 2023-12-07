@@ -66,16 +66,23 @@ public class Utilities {
 
     public static ArrayList<ObjectId> convertToDentistIds (String payload) throws JsonMappingException, JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
+        System.out.println("Test");
         JsonNode jsonNode = objectMapper.readTree(payload);
+        System.out.println(jsonNode);
 
         ArrayList<ObjectId> dentistIds = new ArrayList<>();
 
-        // Last item contains response_topic
-        for (int i = 0; i < jsonNode.size() - 1; i++) {
-            String id = jsonNode.get(i).asText();
-            ObjectId objectId = new ObjectId(id);
-            dentistIds.add(objectId);
-        }
+        // Only checks for DentistId:s
+        if(jsonNode.has("dentists")){
+            JsonNode dentistArray = jsonNode.get("dentists");
+            for (JsonNode dentistNode:dentistArray) {
+                String id = dentistNode.asText();
+                // Check for hexstring length
+                if(id.length() == 24){
+                    ObjectId objectId = new ObjectId(id);
+                    dentistIds.add(objectId);
+        }}}
+
 
         return dentistIds;
     }
@@ -88,12 +95,28 @@ public class Utilities {
 
         if (jsonNode.isArray()) {
             JsonNode lastElement = jsonNode.get(jsonNode.size() - 1);
-            responseTopic = lastElement.get("response_topic").asText();
+            responseTopic = lastElement.get("responseTopic").asText();
         } else if (jsonNode.isObject()) {
-            responseTopic = jsonNode.get("response_topic").asText();
+            responseTopic = jsonNode.get("responseTopic").asText();
         }
 
         return responseTopic;
+    }
+
+    public static LocalDate extractDate(String payload) throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode jsonNode = objectMapper.readTree(payload);
+
+        String date = "";
+
+        if (jsonNode.isArray()) {
+            JsonNode lastElement = jsonNode.get(jsonNode.size() - 1);
+            date = lastElement.get("date").asText();
+        } else if (jsonNode.isObject()) {
+            date = jsonNode.get("date").asText();
+        }
+
+        return LocalDate.parse(date);
     }
 
     public static MongoCollection<Appointment> getCollection(MongoClient mongoClient) {

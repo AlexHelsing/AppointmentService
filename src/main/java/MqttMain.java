@@ -15,6 +15,7 @@ import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 
 import javax.net.ssl.SSLSocketFactory;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -41,6 +42,8 @@ public class MqttMain {
     static String patientGetAllAppointments = "Patient/get_all_appointments/req";
     static String patientCancelAppointment = "Patient/cancel_appointment/req";
     static String clinicGetAppointments = "Clinic/get_appointments/req";
+
+    static String clinicGetAppointmentsDate = "Clinic/get_appointments/date/req";
 
     // Codec
     static CodecProvider pojoCodecProvider = PojoCodecProvider.builder().automatic(true).build();
@@ -239,6 +242,52 @@ public class MqttMain {
                 Bson filter = Filters.in("dentistId", dentistIds);
                 ArrayList<Appointment> matchingAppointments = new ArrayList<Appointment>();
                 collection.find(filter).into(matchingAppointments);
+                //System.out.println("Matching appointments: " +  matchingAppointments);
+
+                // Structure payload as an array of JSONs
+                ArrayList<String> jsonAppointments = new ArrayList<>();
+                for (Appointment appointment :  matchingAppointments) {
+
+                    String jsonAppointment = appointment.toJSON();
+                    jsonAppointments.add(jsonAppointment);
+                }
+
+                Result result = new Result(200, "Appointments were retrieved successfully.");
+                String resultJson = result.toJSON();
+
+                String resPayload = "";
+                if(jsonAppointments.isEmpty()) {
+                    resPayload = "[" + resultJson + "]";
+                }
+                else {
+                    resPayload = "[" + String.join(", ", jsonAppointments) + "," + resultJson + "]";
+                }
+                System.out.println(resPayload);
+
+                String mqttResponseTopic = String.format("Clinic/%s/get_appointments/res", responseTopic);
+                byte[] messagePayload = resPayload.getBytes();
+                MqttMessage publishMessage = new MqttMessage(messagePayload);
+
+                client.publish(mqttResponseTopic, publishMessage);
+            } catch (MqttException | JsonProcessingException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        client.subscribe(clinicGetAppointmentsDate, 1, (topic, message) -> {
+            String payload = Utilities.payloadToString(message.getPayload());
+            System.out.println("Received message on " + topic + " \nMessage: " + payload);
+            try {
+                ArrayList<ObjectId> dentistIds = Utilities.convertToDentistIds(payload);
+                String responseTopic = Utilities.extractResponseTopic(payload);
+                LocalDate date = Utilities.extractDate(payload);
+
+
+                // Query Appointments based on dentistIds
+                Bson filter = Filters.in("dentistId", dentistIds);
+                Bson dateFilter = Filters.eq("date", date);
+                Bson combinedFilter = Filters.and(filter, dateFilter);
+                ArrayList<Appointment> matchingAppointments = new ArrayList<>();
+                collection.find(combinedFilter).into(matchingAppointments);
                 //System.out.println("Matching appointments: " +  matchingAppointments);
 
                 // Structure payload as an array of JSONs
