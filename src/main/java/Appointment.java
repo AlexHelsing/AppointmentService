@@ -11,8 +11,7 @@ public class Appointment {
 
     private ObjectId dentistId;
 
-    //@JsonProperty("clinicId")
-    //private String clinicId;
+    private ObjectId clinicId;
 
     private boolean isBooked;
 
@@ -23,10 +22,10 @@ public class Appointment {
     private LocalTime endTime;
 
     public Appointment() {}
-    public Appointment(ObjectId patientId, ObjectId dentistId, boolean isBooked, LocalDate date, LocalTime startTime, LocalTime endTime) {
+    public Appointment(ObjectId patientId, ObjectId dentistId, ObjectId clinicId, boolean isBooked, LocalDate date, LocalTime startTime, LocalTime endTime) {
         this.patientId = patientId;
         this.dentistId = dentistId;
-        //this.clinicId = clinicId;
+        this.clinicId = clinicId;
         this.isBooked = isBooked;
         this.date = date;
         this.startTime = startTime;
@@ -79,6 +78,14 @@ public class Appointment {
 
     public void setEndTime(LocalTime endTime) {
         this.endTime = endTime;
+    }
+
+    public ObjectId getClinicId() {
+        return clinicId;
+    }
+
+    public void setClinicId(ObjectId clinicId) {
+        this.clinicId = clinicId;
     }
 
     public ObjectId getId() {

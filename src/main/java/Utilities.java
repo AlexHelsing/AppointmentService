@@ -41,6 +41,12 @@ public class Utilities {
                 String dentistId_string  = element.get("dentist_id").asText();
                 ObjectId dentistId = new ObjectId(dentistId_string);
                 appointment.setDentistId(dentistId);
+
+                appointment.setClinicId(new ObjectId());
+                appointment.setBooked(false);
+                String clinicId_string  = element.get("clinic_id").asText();
+                ObjectId clinicId = new ObjectId(clinicId_string);
+                appointment.setClinicId(clinicId);
                 // Appointment Date
                 String dateString = element.get("date").asText();
                 LocalDate date = LocalDate.parse(dateString, DateTimeFormatter.ISO_LOCAL_DATE);
@@ -103,6 +109,55 @@ public class Utilities {
         return responseTopic;
     }
 
+    public static ArrayList<ObjectId> convertToClinicIds (String payload) throws JsonProcessingException {
+        ObjectMapper objectMapper = new ObjectMapper();
+        System.out.println("Test");
+        JsonNode jsonNode = objectMapper.readTree(payload);
+        System.out.println(jsonNode);
+
+        ArrayList<ObjectId> clinicIds = new ArrayList<>();
+
+        // Check if "clinics" field exists in the JSON
+        if (jsonNode.has("clinics") && jsonNode.get("clinics").isArray()) {
+            JsonNode clinicsArray = jsonNode.get("clinics");
+            for (JsonNode clinicNode : clinicsArray) {
+                String clinicId = clinicNode.asText();
+                // Check for hexstring length
+                if (clinicId.length() == 24) {
+                    ObjectId objectId = new ObjectId(clinicId);
+                    clinicIds.add(objectId);
+                }
+            }
+        }
+        return clinicIds;
+    }
+
+
+    // SINGULAR USE THIS FOR THE clinicGetAppointmentsDate only. Will fix but headache trying to parse the god damn json
+    // crap
+    public static ArrayList<ObjectId> convertToClinicId(String payload) throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        System.out.println("Test");
+        JsonNode jsonNode = objectMapper.readTree(payload);
+        System.out.println(jsonNode);
+
+        ArrayList<ObjectId> clinicIds = new ArrayList<>();
+
+        // Check if "clinics" field exists in the JSON
+        if (jsonNode.has("clinics")) {
+            String clinicId = jsonNode.get("clinics").asText();
+
+            // Check for hexstring length
+            if (clinicId.length() == 24) {
+                ObjectId objectId = new ObjectId(clinicId);
+                clinicIds.add(objectId);
+            }
+        }
+
+        return clinicIds;
+    }
+
+
     public static LocalDate extractDate(String payload) throws Exception {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode jsonNode = objectMapper.readTree(payload);
@@ -120,7 +175,7 @@ public class Utilities {
     }
 
     public static MongoCollection<Appointment> getCollection(MongoClient mongoClient) {
-        MongoDatabase database = mongoClient.getDatabase("Appointments").withCodecRegistry(MqttMain.pojoCodecRegistry);
+        MongoDatabase database = mongoClient.getDatabase("appointments").withCodecRegistry(MqttMain.pojoCodecRegistry);
         return database.getCollection("appointments", Appointment.class);
     }
 }

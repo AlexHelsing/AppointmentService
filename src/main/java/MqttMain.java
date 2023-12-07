@@ -1,4 +1,6 @@
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 import com.mongodb.client.*;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.FindOneAndUpdateOptions;
@@ -15,9 +17,9 @@ import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 
 import javax.net.ssl.SSLSocketFactory;
 
+import java.lang.reflect.Type;
 import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 import static com.mongodb.MongoClientSettings.getDefaultCodecRegistry;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -39,11 +41,13 @@ public class MqttMain {
     static String dentistAddAppointmentSlot = "Clinic/post_slots/req";
     static String patientMakeAppointment = "Patient/make_appointment/req";
     static String patientGetAppointments = "Patient/get_appointments/req";
+    static String patientGetAvailabilityCount = "Clinic/get_clinics_availability/date/req";
     static String patientGetAllAppointments = "Patient/get_all_appointments/req";
     static String patientCancelAppointment = "Patient/cancel_appointment/req";
     static String clinicGetAppointments = "Clinic/get_appointments/req";
 
     static String clinicGetAppointmentsDate = "Clinic/get_appointments/date/req";
+
 
     // Codec
     static CodecProvider pojoCodecProvider = PojoCodecProvider.builder().automatic(true).build();
@@ -277,13 +281,12 @@ public class MqttMain {
             String payload = Utilities.payloadToString(message.getPayload());
             System.out.println("Received message on " + topic + " \nMessage: " + payload);
             try {
-                ArrayList<ObjectId> dentistIds = Utilities.convertToDentistIds(payload);
+                ArrayList<ObjectId> clinicIds = Utilities.convertToClinicId(payload);
                 String responseTopic = Utilities.extractResponseTopic(payload);
                 LocalDate date = Utilities.extractDate(payload);
 
-
                 // Query Appointments based on dentistIds
-                Bson filter = Filters.in("dentistId", dentistIds);
+                Bson filter = Filters.in("clinicId", clinicIds);
                 Bson dateFilter = Filters.eq("date", date);
                 Bson combinedFilter = Filters.and(filter, dateFilter);
                 ArrayList<Appointment> matchingAppointments = new ArrayList<>();
@@ -314,6 +317,46 @@ public class MqttMain {
                 byte[] messagePayload = resPayload.getBytes();
                 MqttMessage publishMessage = new MqttMessage(messagePayload);
 
+                client.publish(mqttResponseTopic, publishMessage);
+            } catch (MqttException | JsonProcessingException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        client.subscribe(patientGetAvailabilityCount, 1, (topic, message) -> {
+            String payload = Utilities.payloadToString(message.getPayload());
+            System.out.println("Received message on " + topic + " \nMessage: " + payload);
+            try {
+                ArrayList<ObjectId> clinicIds = Utilities.convertToClinicIds(payload);
+                String responseTopic = Utilities.extractResponseTopic(payload);
+                LocalDate date = Utilities.extractDate(payload);
+                // Query Appointments based on date and clinicId
+                Bson dateFilter = Filters.eq("date", date);
+                // Create hashmap and then fill it with {clinicId:number of available spots this date}
+                Map<ObjectId, Long> clinicAppointmentCounts = new HashMap<>();
+                for (ObjectId clinicId : clinicIds) {
+                    Bson clinicFilter = Filters.and(Filters.eq("clinicId", clinicId), dateFilter);
+                    long clinicAppointmentCount = collection.countDocuments(clinicFilter);
+                    clinicAppointmentCounts.put(clinicId, clinicAppointmentCount);
+                }
+
+                // JSON format crap builder
+                Gson gson = new Gson();
+                Type typeObject = new TypeToken<HashMap>() {}.getType();
+                String gsonData = gson.toJson(clinicAppointmentCounts, typeObject);
+
+                Result result = new Result(200, "Appointments were retrieved successfully.");
+                String resultJson = result.toJSON();
+
+                String resPayload;
+                if(clinicAppointmentCounts.isEmpty()) {
+                    resPayload = "[" + resultJson + "]";
+                }
+                else {
+                    resPayload = "[" + String.join(", ", gsonData + "," + resultJson + "]");
+                }
+                String mqttResponseTopic = String.format("Clinic/%s/get_clinics_availability/date/res", responseTopic);
+                byte[] messagePayload = resPayload.getBytes();
+                MqttMessage publishMessage = new MqttMessage(messagePayload);
                 client.publish(mqttResponseTopic, publishMessage);
             } catch (MqttException | JsonProcessingException e) {
                 throw new RuntimeException(e);
