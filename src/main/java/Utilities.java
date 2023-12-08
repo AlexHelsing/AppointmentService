@@ -132,6 +132,49 @@ public class Utilities {
         return clinicIds;
     }
 
+    public static String extractClinicId(String payload) throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode jsonNode = objectMapper.readTree(payload);
+
+        // Check if "clinics" field exists in the JSON
+        if (jsonNode.has("clinics")) {
+            String clinicId = jsonNode.get("clinics").asText();
+
+            // Check for hexstring length
+            if (clinicId.length() == 24) {
+                return clinicId;
+            }
+        }
+
+        // If clinicId is not found or has an invalid length, return null or throw an exception
+        return null;
+    }
+
+    public static List<ObjectId> extractClinicIds(String payload) throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode jsonNode = objectMapper.readTree(payload);
+
+        List<ObjectId> clinicIds = new ArrayList<>();
+
+        if (jsonNode.has("clinicIds")) {
+            JsonNode clinicIdsNode = jsonNode.get("clinicIds");
+
+            if (clinicIdsNode.isArray()) {
+                for (JsonNode clinicIdNode : clinicIdsNode) {
+                    String clinicId = clinicIdNode.asText();
+
+                    // Check for hexstring length
+                    if (clinicId.length() == 24) {
+                        ObjectId objectId = new ObjectId(clinicId);
+                        clinicIds.add(objectId);
+                    }
+                }
+            }
+        }
+
+        return clinicIds;
+    }
+
 
     // SINGULAR USE THIS FOR THE clinicGetAppointmentsDate only. Will fix but headache trying to parse the god damn json
     // crap

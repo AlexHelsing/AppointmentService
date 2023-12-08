@@ -240,12 +240,53 @@ public class MqttMain {
             String payload = Utilities.payloadToString(message.getPayload());
             System.out.println("Received message on " + topic + " \nMessage: " + payload);
             try {
-                ArrayList<ObjectId> dentistIds = Utilities.convertToDentistIds(payload);
+                String clinicId = Utilities.extractClinicId(payload);
                 String responseTopic = Utilities.extractResponseTopic(payload);
+                Bson filter = createClinicIdFilter(clinicId);
 
                 // Query Appointments based on dentistIds
-                Bson filter = Filters.in("dentistId", dentistIds);
-                ArrayList<Appointment> matchingAppointments = new ArrayList<Appointment>();
+                ArrayList<Appointment> matchingAppointments = new ArrayList<>();
+                collection.find(filter).into(matchingAppointments);
+                //System.out.println("Matching appointments: " +  matchingAppointments);
+
+                // Structure payload as an array of JSONs
+                ArrayList<String> jsonAppointments = new ArrayList<>();
+                for (Appointment appointment :  matchingAppointments) {
+
+                    String jsonAppointment = appointment.toJSON();
+                    jsonAppointments.add(jsonAppointment);
+                }
+
+
+                Result result = new Result(200, "Appointments were retrieved successfully.");
+                String resultJson = result.toJSON();
+
+                String resPayload;
+                if(jsonAppointments.isEmpty()) {
+                    resPayload = "[" + resultJson + "]";
+                }
+                else {
+                    resPayload = "[" + String.join(", ", jsonAppointments) + "," + resultJson + "]";
+                }
+
+                String mqttResponseTopic = String.format("Clinic/%s/get_appointments/res", responseTopic);
+                byte[] messagePayload = resPayload.getBytes();
+                MqttMessage publishMessage = new MqttMessage(messagePayload);
+                client.publish(mqttResponseTopic, publishMessage);
+            } catch (MqttException | JsonProcessingException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        client.subscribe("Clinic/get_appointments/city/req", 1, (topic, message) -> {
+            String payload = Utilities.payloadToString(message.getPayload());
+            System.out.println("Received message on " + topic + " \nMessage: " + payload);
+            try {
+                List<ObjectId> clinicId = Utilities.extractClinicIds(payload);
+                String responseTopic = Utilities.extractResponseTopic(payload);
+                Bson filter = createClinicIdsFilter(clinicId);
+
+                // Query Appointments based on dentistIds
+                ArrayList<Appointment> matchingAppointments = new ArrayList<>();
                 collection.find(filter).into(matchingAppointments);
                 //System.out.println("Matching appointments: " +  matchingAppointments);
 
@@ -259,20 +300,20 @@ public class MqttMain {
 
                 Result result = new Result(200, "Appointments were retrieved successfully.");
                 String resultJson = result.toJSON();
-
-                String resPayload = "";
+                String resPayload;
                 if(jsonAppointments.isEmpty()) {
                     resPayload = "[" + resultJson + "]";
                 }
                 else {
                     resPayload = "[" + String.join(", ", jsonAppointments) + "," + resultJson + "]";
                 }
+
                 System.out.println(resPayload);
 
-                String mqttResponseTopic = String.format("Clinic/%s/get_appointments/res", responseTopic);
+                String mqttResponseTopic = String.format("Clinic/%s/get_appointments/city/res", responseTopic);
+                System.out.println(mqttResponseTopic);
                 byte[] messagePayload = resPayload.getBytes();
                 MqttMessage publishMessage = new MqttMessage(messagePayload);
-
                 client.publish(mqttResponseTopic, publishMessage);
             } catch (MqttException | JsonProcessingException e) {
                 throw new RuntimeException(e);
@@ -379,5 +420,16 @@ public class MqttMain {
                 throw new RuntimeException(e);
             }
         });
+    }
+
+    public static Bson createClinicIdFilter(String clinicId) {
+        return Filters.eq("clinicId", new ObjectId(clinicId));
+    }
+
+    public static Bson createClinicIdsFilter(List<ObjectId> clinicIds) {
+        return Filters.and(
+                Filters.in("clinicId", clinicIds),
+                Filters.eq("isBooked", false)
+        );
     }
 }
