@@ -427,9 +427,13 @@ public class MqttMain {
     }
 
     public static Bson createClinicIdsFilter(List<ObjectId> clinicIds) {
+        LocalDate currentDate = LocalDate.now();
+        // Last filter is for only fetching appointments with times from the current date and forward
+        // Since being able to book appointments from the past makes no sense
         return Filters.and(
                 Filters.in("clinicId", clinicIds),
-                Filters.eq("isBooked", false)
+                Filters.eq("isBooked", false),
+                Filters.gte("date", currentDate)
         );
     }
 }
