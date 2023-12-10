@@ -89,11 +89,25 @@ public class Utilities {
         if (jsonNode.isArray()) {
             JsonNode lastElement = jsonNode.get(jsonNode.size() - 1);
             responseTopic = lastElement.get("response_topic").asText();
-        } else if (jsonNode.isObject()) {
+        } else {
             responseTopic = jsonNode.get("response_topic").asText();
         }
 
         return responseTopic;
+    }
+
+    public static String extractPatientId(String payload) throws JsonProcessingException {
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode jsonNode = objectMapper.readTree(payload);
+
+        return jsonNode.get("patient_id").asText();
+    }
+
+    public  static String extractAppointmentId(String payload) throws JsonProcessingException {
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode jsonNode = objectMapper.readTree(payload);
+
+        return jsonNode.get("appointment_id").asText();
     }
 
     public static MongoCollection<Appointment> getCollection(MongoClient mongoClient) {
