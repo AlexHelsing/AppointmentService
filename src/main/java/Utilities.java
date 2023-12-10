@@ -6,6 +6,8 @@ import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
+import com.mongodb.client.model.Filters;
+import org.bson.conversions.Bson;
 import org.bson.types.ObjectId;
 
 import java.lang.reflect.Type;
@@ -107,6 +109,21 @@ public class Utilities {
         }
 
         return responseTopic;
+    }
+
+    public static Bson createClinicIdFilter(String clinicId) {
+        return Filters.eq("clinicId", new ObjectId(clinicId));
+    }
+
+    public static Bson createClinicIdsFilter(List<ObjectId> clinicIds) {
+        LocalDate currentDate = LocalDate.now();
+        // Last filter is for only fetching appointments with times from the current date and forward
+        // Since being able to book appointments from the past makes no sense
+        return Filters.and(
+                Filters.in("clinicId", clinicIds),
+                Filters.eq("isBooked", false),
+                Filters.gte("date", currentDate)
+        );
     }
 
     public static ArrayList<ObjectId> convertToClinicIds (String payload) throws JsonProcessingException {
