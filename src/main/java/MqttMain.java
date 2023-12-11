@@ -3,6 +3,7 @@ import com.mongodb.client.*;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.FindOneAndUpdateOptions;
 import com.mongodb.client.model.ReturnDocument;
+import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.InsertManyResult;
 import org.bson.Document;
 import org.bson.codecs.configuration.CodecProvider;
@@ -35,10 +36,12 @@ public class MqttMain {
 
     // TOPICS
     static String dentistAddAppointmentSlot = "Clinic/post_slots/req";
+    static String deleteDentistAppointments = "Clinic/delete_dentist/req";
+    static String clinicGetAppointments = "Clinic/get_appointments/req";
     static String patientMakeAppointment = "Patient/make_appointment/req";
     static String patientGetAppointments = "Patient/get_appointments/req";
     static String patientCancelAppointment = "Patient/cancel_appointment/req";
-    static String clinicGetAppointments = "Clinic/get_appointments/req";
+
     static String dentistGetAppointmentSlots = "Dentist/get_appointments/req";
     static String dentistCancelAppointment = "Dentist/cancel_appointment/req";
 
@@ -338,6 +341,26 @@ public class MqttMain {
 
                 client.publish(mqttResponseTopic, publishMessage);
             } catch (MqttException | JsonProcessingException e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+        client.subscribe(deleteDentistAppointments, 1, (topic, message) -> {
+            String payload = Utilities.payloadToString(message.getPayload());
+            System.out.println("Received message on " + topic + " \nMessage: " + payload);
+            try {
+                String responseTopic = Utilities.extractResponseTopic(payload);
+                ObjectId dentist_id = new ObjectId(Utilities.extractDentistId(payload));
+
+                Bson filter = Filters.eq("dentistId", dentist_id);
+                DeleteResult result = collection.deleteMany(filter);
+                if (result.wasAcknowledged()){
+                    String mqttResponseTopic = String.format("Clinic/%s/delete_dentist/res", responseTopic);
+                    byte[] resPayloadBytes = new Result(200, "Appointments were deleted successfully.").toJSON().getBytes();
+                    MqttMessage response = new MqttMessage(resPayloadBytes);
+                    client.publish(mqttResponseTopic, response);
+                }
+            } catch (JsonProcessingException | MqttException e) {
                 throw new RuntimeException(e);
             }
         });
