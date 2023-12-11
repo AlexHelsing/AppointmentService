@@ -110,6 +110,12 @@ public class Utilities {
         return jsonNode.get("appointment_id").asText();
     }
 
+    public  static String extractDentistId(String payload) throws JsonProcessingException {
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode jsonNode = objectMapper.readTree(payload);
+
+        return jsonNode.get("dentist_id").asText();
+    }
     public static MongoCollection<Appointment> getCollection(MongoClient mongoClient) {
         MongoDatabase database = mongoClient.getDatabase("Appointments").withCodecRegistry(MqttMain.pojoCodecRegistry);
         return database.getCollection("appointments", Appointment.class);
