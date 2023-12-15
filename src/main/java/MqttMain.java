@@ -35,7 +35,7 @@ public class MqttMain {
     static String MqttPassword = AppConfig.getMqttPassword();
 
     // TOPICS
-    static String dentistAddAppointmentSlot = "Clinic/post_slots/req";
+    static String dentistAddAppointmentSlot = "Dentist/post_slots/req";
     static String deleteDentistAppointments = "Clinic/delete_dentist/req";
     static String clinicGetAppointments = "Clinic/get_appointments/req";
     static String patientMakeAppointment = "Patient/make_appointment/req";
@@ -214,7 +214,7 @@ public class MqttMain {
                 InsertManyResult newAppointments = collection.insertMany(appointments);
                 // If insertion is acknowledged, publish to response topic
                 if(newAppointments.wasAcknowledged()){
-                    String mqttResponseTopic = String.format("Clinic/%s/post_slots/res", responseTopic);
+                    String mqttResponseTopic = String.format("Dentist/%s/post_slots/res", responseTopic);
 
                     Result result = new Result(201, "Appointment slots were added successfully.");
                     String resPayload = result.toJSON();
