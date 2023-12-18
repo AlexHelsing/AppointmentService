@@ -1,63 +1,108 @@
-import com.fasterxml.jackson.annotation.JsonFormat;
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import org.bson.types.ObjectId;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.LocalTime;
 
 public class Appointment {
+    private ObjectId _id;
+    private ObjectId patientId;
 
+    private ObjectId dentistId;
 
-    public Appointment () {}
+    //@JsonProperty("clinicId")
+    //private String clinicId;
 
-    @JsonProperty("appointment_id")
-    private ObjectId appointmentId;
+    private boolean isBooked;
 
-    @JsonProperty("patient")
-    private String patient;
+    private LocalDate date;
 
-    @JsonProperty("dentist")
-    private String dentist;
-    @JsonFormat(pattern = "yyyy-MM-dd HH:mm")
-    private LocalDateTime dateTime;
+    private LocalTime startTime;
 
+    private LocalTime endTime;
 
-    public Appointment(String patient, String dentist, LocalDateTime dateTime){
-        this.patient = patient;
-        this.dentist = dentist;
-        this.dateTime = dateTime;
+    public Appointment() {}
+    public Appointment(ObjectId patientId, ObjectId dentistId, boolean isBooked, LocalDate date, LocalTime startTime, LocalTime endTime) {
+        this.patientId = patientId;
+        this.dentistId = dentistId;
+        //this.clinicId = clinicId;
+        this.isBooked = isBooked;
+        this.date = date;
+        this.startTime = startTime;
+        this.endTime = endTime;
     }
 
-    public ObjectId getAppointmentId() {
-        return appointmentId;
+    public ObjectId getPatientId() {
+        return patientId;
     }
 
-    public String getPatient() {
-        return patient;
+    public void setPatientId(ObjectId patientId) {
+        this.patientId = patientId;
     }
 
-    public void setPatient(String patient) {
-        this.patient = patient;
+    public ObjectId getDentistId() {
+        return dentistId;
     }
 
-    public String getDentist() {
-        return dentist;
+    public void setDentistId(ObjectId dentistId) {
+        this.dentistId = dentistId;
     }
 
-    public void setDentist(String dentist) {
-        this.dentist = dentist;
+    public boolean isBooked() {
+        return isBooked;
     }
 
-    public LocalDateTime getDateTime() {
-        return dateTime;
+    public void setBooked(boolean booked) {
+        isBooked = booked;
     }
 
-    public void setDateTime(LocalDateTime dateTime) {
-        this.dateTime = dateTime;
+    public LocalDate getDate() {
+        return date;
     }
 
-    public String toString(){
-        return String.format("Patient: %s " + "Dentist: %s" + "Date and time: %s ", getPatient(), getDentist(), getDateTime());
+    public void setDate(LocalDate date) {
+        this.date = date;
+    }
+
+    public LocalTime getStartTime() {
+        return startTime;
+    }
+
+    public void setStartTime(LocalTime startTime) {
+        this.startTime = startTime;
+    }
+
+    public LocalTime getEndTime() {
+        return endTime;
+    }
+
+    public void setEndTime(LocalTime endTime) {
+        this.endTime = endTime;
+    }
+
+    public ObjectId getId() {
+        return this._id;
+    }
+
+    public void setId(ObjectId id) {
+        this._id = id;
+    }
+    public String toString() {
+        return String.format("""
+                Patient: %s\s
+                Dentist: %s\s
+                Date: %s Starting at: %s Ending at: %s""", getPatientId(), getDentistId(), getDate(), getStartTime(), getEndTime());
+    }
+
+    public String toJSON() {
+        GsonBuilder gsonBuilder = new GsonBuilder();
+        gsonBuilder.setPrettyPrinting();
+        Gson gson = gsonBuilder
+                .registerTypeAdapter(ObjectId.class, new MongoObjectIdTypeAdapter())
+                .registerTypeAdapter(LocalDate.class, new LocalDateTypeAdapter())
+                .registerTypeAdapter(LocalTime.class, new LocalTimeTypeAdapter())
+                .create();
+        return gson.toJson(this);
     }
 }
