@@ -111,14 +111,6 @@ public class MqttMain {
                     client.publish(mqttResponseTopic, publishMessage);
                     return;
                 }
-
-                if (appointment.isBooked()) {
-                    byte[] messagePayload = new Result(409, "Appointment is already booked.").toJSON().getBytes();
-                    MqttMessage publishMessage = new MqttMessage(messagePayload);
-                    client.publish(mqttResponseTopic, publishMessage);
-                    return;
-                }
-
                 // Booking the appointment
                 Document query = new Document("_id", new ObjectId(appointment_id));
                 Document update = new Document("$set", new Document("patientId", new ObjectId(patient_id))
@@ -154,7 +146,6 @@ public class MqttMain {
                 }
                 // Create Json format, format to MQTT message and publish to response topic
                 String jsonArray = "[" + String.join(",", docJsonList) + "]";
-                System.out.println(jsonArray);
                 String mqttResponseTopic = String.format("Patient/%s/get_appointments/res", response_topic);
                 byte[] messagePayload = jsonArray.getBytes();
                 MqttMessage publishMessage = new MqttMessage(messagePayload);
