@@ -13,11 +13,15 @@ import org.bson.conversions.Bson;
 import org.bson.types.ObjectId;
 import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
 
 import javax.net.ssl.SSLSocketFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ThreadPoolExecutor;
 
 import static com.mongodb.MongoClientSettings.getDefaultCodecRegistry;
 import static org.bson.codecs.configuration.CodecRegistries.fromProviders;
@@ -50,6 +54,8 @@ public class MqttMain {
     static CodecRegistry pojoCodecRegistry = fromRegistries(getDefaultCodecRegistry(), fromProviders(pojoCodecProvider));
 
     public static void main(String[] args) throws MqttException {
+
+        ExecutorService service = Executors.newFixedThreadPool(10);
         // setting the Mqtt connection
         MqttClient client = new MqttClient(
                 MqttURI, // serverURI in format:
@@ -86,7 +92,7 @@ public class MqttMain {
         MongoCollection<Appointment> collection = Utilities.getCollection(mongoClient);
 
         // Patient Subscriptions
-        client.subscribe(patientMakeAppointment, 1, (topic, message) -> {
+        client.subscribe(patientMakeAppointment, 1, (topic, message) -> service.submit(() -> {
             String payload = Utilities.payloadToString(message.getPayload());
             System.out.println("Received message on " + topic + " \nMessage: " + payload);
             try  {
@@ -127,11 +133,11 @@ public class MqttMain {
                     MqttMessage publishMessage = new MqttMessage(bookedMessage);
                     client.publish(mqttResponseTopic, publishMessage);
                 }
-            } catch (MqttException e) {
+            } catch (Exception e) {
                 throw new RuntimeException(e);
             }
-        });
-        client.subscribe(patientGetAppointments, 1, (topic, message) -> {
+        }));
+        client.subscribe(patientGetAppointments, 1, (topic, message) -> service.submit(() -> {
             String payload = Utilities.payloadToString(message.getPayload());
             System.out.println("Received message on " + topic + " \nMessage: " + payload);
             try  {
@@ -154,11 +160,11 @@ public class MqttMain {
                 byte[] messagePayload = jsonArray.getBytes();
                 MqttMessage publishMessage = new MqttMessage(messagePayload);
                 client.publish(mqttResponseTopic, publishMessage);
-            } catch (MqttException e) {
+            } catch (Exception e) {
                 throw new RuntimeException(e);
             }
-        });
-        client.subscribe(patientCancelAppointment, 1, (topic, message) -> {
+        }));
+        client.subscribe(patientCancelAppointment, 1, (topic, message) -> service.submit(() -> {
             String payload = Utilities.payloadToString(message.getPayload());
             System.out.println("Received message on " + topic + " \nMessage: " + payload);
             try  {
@@ -195,12 +201,12 @@ public class MqttMain {
                     String mqttResponseTopic = String.format("Patient/%s/cancel_appointment/res", response_topic);
                     client.publish(mqttResponseTopic, publishMessage);
                 }
-            } catch (MqttException e) {
+            } catch (Exception e) {
                 throw new RuntimeException(e);
             }
-        });
+        }));
         // Dentist subscriptions
-        client.subscribe(dentistAddAppointmentSlot, 1, (topic, message) -> {
+        client.subscribe(dentistAddAppointmentSlot, 1, (topic, message) -> service.submit(() -> {
             String payload = Utilities.payloadToString(message.getPayload());
             System.out.println("Received message on " + topic + " \nMessage: " + payload);
             try {
@@ -223,12 +229,12 @@ public class MqttMain {
 
                     client.publish(mqttResponseTopic, response);
                 }
-            } catch (JsonProcessingException | MqttException e) {
+            } catch (Exception e) {
                 throw new RuntimeException(e);
             }
-        });
+        }));
         // Dentist appointment slots
-        client.subscribe(dentistGetAppointmentSlots, 1, (topic, message) -> {
+        client.subscribe(dentistGetAppointmentSlots, 1, (topic, message) -> service.submit(() -> {
             String payload = Utilities.payloadToString(message.getPayload());
             System.out.println("Received message on " + topic + " \nMessage: " + payload);
             try {
@@ -253,12 +259,11 @@ public class MqttMain {
                 MqttMessage publishMessage = new MqttMessage(messagePayload);
 
                 client.publish(mqttResponseTopic, publishMessage);
-            } catch (JsonProcessingException | MqttException e) {
+            } catch (Exception e) {
                 throw new RuntimeException(e);
             }
-        });
-
-        client.subscribe(dentistCancelAppointment, 1, (topic, message) -> {
+        }));
+        client.subscribe(dentistCancelAppointment, 1, (topic, message) -> service.submit(() -> {
             String payload = Utilities.payloadToString(message.getPayload());
             System.out.println("Received message on " + topic + " \nMessage: " + payload);
             try {
@@ -297,20 +302,19 @@ public class MqttMain {
                     MqttMessage publishMessage = new MqttMessage(messagePayload);
                     client.publish(mqttResponseTopic, publishMessage);
                 }
-            } catch (JsonProcessingException | MqttException e) {
+            } catch (Exception e) {
                 throw new RuntimeException(e);
             }
-        });
+        }));
         // Clinic subscriptions
-        client.subscribe(clinicGetAppointments, 1, (topic, message) -> {
+        client.subscribe(clinicGetAppointments, 1, (topic, message) -> service.submit(() -> {
             String payload = Utilities.payloadToString(message.getPayload());
-            System.out.println("Received message on " + topic + " \nMessage: " + payload);
             try {
-                ArrayList<ObjectId> dentistIds = Utilities.convertToDentistIds(payload);
+                String clinicId = Utilities.extractClinicId(payload);
                 String responseTopic = Utilities.extractResponseTopic(payload);
 
                 // Query Appointments based on dentistIds
-                Bson filter = Filters.in("dentistId", dentistIds);
+                Bson filter = Filters.in("clinicId", new ObjectId(clinicId));
                 ArrayList<Appointment> matchingAppointments = new ArrayList<>();
                 collection.find(filter).into(matchingAppointments);
                 //System.out.println("Matching appointments: " +  matchingAppointments);
@@ -333,19 +337,17 @@ public class MqttMain {
                 else {
                     resPayload = "[" + String.join(", ", jsonAppointments) + "," + resultJson + "]";
                 }
-                System.out.println(resPayload);
 
                 String mqttResponseTopic = String.format("Clinic/%s/get_appointments/res", responseTopic);
                 byte[] messagePayload = resPayload.getBytes();
                 MqttMessage publishMessage = new MqttMessage(messagePayload);
-
                 client.publish(mqttResponseTopic, publishMessage);
-            } catch (MqttException | JsonProcessingException e) {
+            } catch (Exception e) {
                 throw new RuntimeException(e);
             }
-        });
+        }));
 
-        client.subscribe(deleteDentistAppointments, 1, (topic, message) -> {
+        client.subscribe(deleteDentistAppointments, 1, (topic, message) -> service.submit(() ->{
             String payload = Utilities.payloadToString(message.getPayload());
             System.out.println("Received message on " + topic + " \nMessage: " + payload);
             try {
@@ -360,9 +362,9 @@ public class MqttMain {
                     MqttMessage response = new MqttMessage(resPayloadBytes);
                     client.publish(mqttResponseTopic, response);
                 }
-            } catch (JsonProcessingException | MqttException e) {
+            } catch (Exception e) {
                 throw new RuntimeException(e);
             }
-        });
+        }));
     }
 }
