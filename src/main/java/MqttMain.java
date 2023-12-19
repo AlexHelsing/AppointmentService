@@ -99,7 +99,6 @@ public class MqttMain {
                 String patient_id = Utilities.extractPatientId(payload);
                 String responseTopic = Utilities.extractResponseTopic(payload);
                 String appointment_id = Utilities.extractAppointmentId(payload);
-
                 String mqttResponseTopic = String.format("Patient/%s/make_appointment/res", responseTopic);
 
                 // Find matching appointmentId in db, append patientID + change boolean isBooked to "true"
@@ -123,7 +122,7 @@ public class MqttMain {
                 // Booking the appointment
                 Document query = new Document("_id", new ObjectId(appointment_id));
                 Document update = new Document("$set", new Document("patientId", new ObjectId(patient_id))
-                        .append("booked", true));
+                        .append("isBooked", true));
                 FindOneAndUpdateOptions options = new FindOneAndUpdateOptions().returnDocument(ReturnDocument.AFTER);
                 Appointment updatedDocument = collection.findOneAndUpdate(query, update, options);
 
@@ -314,9 +313,13 @@ public class MqttMain {
                 String responseTopic = Utilities.extractResponseTopic(payload);
 
                 // Query Appointments based on dentistIds
-                Bson filter = Filters.in("clinicId", new ObjectId(clinicId));
+                Bson clinicIdFilter = Filters.in("clinicId", new ObjectId(clinicId));
+                Bson isBookedFilter = Filters.eq("isBooked", false);
+                Bson combinedFilter = Filters.and(clinicIdFilter, isBookedFilter);
+
+
                 ArrayList<Appointment> matchingAppointments = new ArrayList<>();
-                collection.find(filter).into(matchingAppointments);
+                collection.find(combinedFilter).into(matchingAppointments);
                 //System.out.println("Matching appointments: " +  matchingAppointments);
 
                 // Structure payload as an array of JSONs
