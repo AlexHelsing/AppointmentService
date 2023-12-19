@@ -190,7 +190,7 @@ public class MqttMain {
                 }
                 Document query = new Document("_id", new ObjectId(appointment_id));
                 Document update = new Document("$set", new Document("patientId", null)
-                        .append("booked", false));
+                        .append("isBooked", false));
                 FindOneAndUpdateOptions options = new FindOneAndUpdateOptions().returnDocument(ReturnDocument.AFTER);
                 Appointment updatedDocument = collection.findOneAndUpdate(query, update, options);
 
