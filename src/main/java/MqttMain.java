@@ -181,13 +181,6 @@ public class MqttMain {
                     client.publish(mqttResponseTopic, publishMessage);
                     return;
                 }
-                if (!appointment.isBooked()) {
-                    String result = new Result(403, "Appointment with given id is not booked.").toJSON();
-                    MqttMessage publishMessage = new MqttMessage(result.getBytes());
-                    String mqttResponseTopic = String.format("Patient/%s/cancel_appointment/res", response_topic);
-                    client.publish(mqttResponseTopic, publishMessage);
-                    return;
-                }
                 Document query = new Document("_id", new ObjectId(appointment_id));
                 Document update = new Document("$set", new Document("patientId", null)
                         .append("isBooked", false));
