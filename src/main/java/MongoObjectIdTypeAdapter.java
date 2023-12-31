@@ -70,8 +70,6 @@ public class MongoObjectIdTypeAdapter extends TypeAdapter<ObjectId> implements J
             return;
         }
         dateTypeAdapter.write(out, value.toString());
-        System.out.println(value.toString());
-
     }
 
     /**
