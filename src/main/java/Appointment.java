@@ -1,5 +1,7 @@
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+
+import org.bson.codecs.pojo.annotations.BsonProperty;
 import org.bson.types.ObjectId;
 
 import java.time.LocalDate;
@@ -11,10 +13,9 @@ public class Appointment {
 
     private ObjectId dentistId;
 
-    //@JsonProperty("clinicId")
-    //private String clinicId;
+    private ObjectId clinicId;
 
-    private boolean isBooked;
+    private boolean booked;
 
     private LocalDate date;
 
@@ -22,12 +23,15 @@ public class Appointment {
 
     private LocalTime endTime;
 
-    public Appointment() {}
-    public Appointment(ObjectId patientId, ObjectId dentistId, boolean isBooked, LocalDate date, LocalTime startTime, LocalTime endTime) {
+    public Appointment() {
+    }
+
+    public Appointment(ObjectId patientId, ObjectId dentistId, ObjectId clinicId, boolean booked, LocalDate date,
+            LocalTime startTime, LocalTime endTime) {
         this.patientId = patientId;
         this.dentistId = dentistId;
-        //this.clinicId = clinicId;
-        this.isBooked = isBooked;
+        this.clinicId = clinicId;
+        this.booked = booked;
         this.date = date;
         this.startTime = startTime;
         this.endTime = endTime;
@@ -49,12 +53,20 @@ public class Appointment {
         this.dentistId = dentistId;
     }
 
+    public ObjectId getClinicId() {
+        return clinicId;
+    }
+
+    public void setClinicId(ObjectId clinicId) {
+        this.clinicId = clinicId;
+    }
+
     public boolean isBooked() {
-        return isBooked;
+        return this.booked;
     }
 
     public void setBooked(boolean booked) {
-        isBooked = booked;
+        this.booked = booked;
     }
 
     public LocalDate getDate() {
@@ -88,11 +100,17 @@ public class Appointment {
     public void setId(ObjectId id) {
         this._id = id;
     }
+
     public String toString() {
         return String.format("""
                 Patient: %s\s
                 Dentist: %s\s
-                Date: %s Starting at: %s Ending at: %s""", getPatientId(), getDentistId(), getDate(), getStartTime(), getEndTime());
+                Clinic: %s\s
+                isBooked: %s\s
+                Date: %s Starting at: %s Ending at: %s""", getPatientId(), getDentistId(), getClinicId(), isBooked(),
+                getDate(),
+                getStartTime(),
+                getEndTime());
     }
 
     public String toJSON() {
