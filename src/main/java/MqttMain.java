@@ -276,16 +276,20 @@ public class MqttMain {
                     client.publish(mqttResponseTopic, publishMessage);
                     return;
                 }
-
+                // need for realtime shit
+                String patient_id = appointment.getPatientId().toString();
                 Document query = new Document("_id", appointment_id);
                 Document update = new Document("$set", new Document("patientId", null)
                         .append("booked", false));
                 FindOneAndUpdateOptions options = new FindOneAndUpdateOptions().returnDocument(ReturnDocument.AFTER);
                 Appointment updatedDocument = collection.findOneAndUpdate(query, update, options);
 
+                System.out.println("updatedDocument: " + updatedDocument);
+
                 if (updatedDocument != null) {
+
                     String mqttResponseTopic = String.format("Dentist/%s/cancel_appointment/res", responseTopic);
-                    byte[] messagePayload = new Result(200, "Appointment was cancelled").toJSON().getBytes();
+                    byte[] messagePayload = new Result(200, patient_id).toJSON().getBytes();
                     MqttMessage publishMessage = new MqttMessage(messagePayload);
                     client.publish(mqttResponseTopic, publishMessage);
                 }
