@@ -20,7 +20,8 @@ public class Utilities {
         return new String(payload, UTF_8);
     }
 
-    // Received payload is expected to be a string formatted valid json object of json array.
+    // Received payload is expected to be a string formatted valid json object of
+    // json array.
     public static ArrayList<Appointment> convertToAppointments(String payload) throws Exception {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode jsonNode = objectMapper.readTree(payload);
@@ -29,13 +30,13 @@ public class Utilities {
         // Creating appointment objects
         if (jsonNode.isArray()) {
             // Last element holds the response_topic
-            for (int i = 0; i < jsonNode.size() - 1 ; i++) {
+            for (int i = 0; i < jsonNode.size() - 1; i++) {
                 Appointment appointment = new Appointment();
                 JsonNode element = jsonNode.get(i);
 
                 appointment.setId(new ObjectId());
-                appointment.setBooked(false);
-                String dentistId_string  = element.get("dentist_id").asText();
+
+                String dentistId_string = element.get("dentist_id").asText();
                 ObjectId dentistId = new ObjectId(dentistId_string);
                 appointment.setDentistId(dentistId);
                 // Appointment Date
@@ -46,22 +47,33 @@ public class Utilities {
                 String startString = element.get("start").asText();
                 LocalTime startTime = LocalTime.parse(startString);
                 appointment.setStartTime(startTime);
-                //Appointment End time
+                // Appointment End time
                 String endString = element.get("end").asText();
                 LocalTime endTime = LocalTime.parse(endString);
                 appointment.setEndTime(endTime);
 
+                // set isBooked
+                boolean isBooked = element.get("booked").asBoolean(false);
+                appointment.setBooked(isBooked);
+
+                // set clinicId
+                String clinicId_string = element.get("clinic_id").asText();
+                ObjectId clinicId = new ObjectId(clinicId_string);
+                appointment.setClinicId(clinicId);
+
+                // System.out.println(appointment.toString());
+
                 appointments.add(appointment);
             }
-        }
-        else {
+        } else {
             throw new Exception("Received payload is not formatted as an Array.");
         }
 
         return appointments;
     }
 
-    public static ArrayList<ObjectId> convertToDentistIds (String payload) throws JsonMappingException, JsonProcessingException {
+    public static ArrayList<ObjectId> convertToDentistIds(String payload)
+            throws JsonMappingException, JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode jsonNode = objectMapper.readTree(payload);
 
@@ -104,22 +116,23 @@ public class Utilities {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode jsonNode = objectMapper.readTree(payload);
 
-        return jsonNode.get("clinicId").asText();
+        return jsonNode.get("clinic_id").asText();
     }
 
-    public  static String extractAppointmentId(String payload) throws JsonProcessingException {
+    public static String extractAppointmentId(String payload) throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode jsonNode = objectMapper.readTree(payload);
 
         return jsonNode.get("appointment_id").asText();
     }
 
-    public  static String extractDentistId(String payload) throws JsonProcessingException {
+    public static String extractDentistId(String payload) throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode jsonNode = objectMapper.readTree(payload);
 
         return jsonNode.get("dentist_id").asText();
     }
+
     public static MongoCollection<Appointment> getCollection(MongoClient mongoClient) {
         MongoDatabase database = mongoClient.getDatabase("Appointments").withCodecRegistry(MqttMain.pojoCodecRegistry);
         return database.getCollection("appointments", Appointment.class);
