@@ -294,6 +294,7 @@ public class MqttMain {
                     return;
                 }
 
+                String patient_id = appointment.getPatientId().toString();
                 Document query = new Document("_id", appointment_id);
                 Document update = new Document("$set", new Document("patientId", null)
                         .append("booked", false));
@@ -303,7 +304,7 @@ public class MqttMain {
                 if (updatedDocument != null) {
                     appointmentCache.updateCache(updatedDocument, updatedDocument.getClinicId().toString(), String.valueOf(appointment_id));
                     String mqttResponseTopic = String.format("Dentist/%s/cancel_appointment/res", responseTopic);
-                    byte[] messagePayload = new Result(200, "Appointment was cancelled").toJSON().getBytes();
+                    byte[] messagePayload = new Result(200, patient_id).toJSON().getBytes();
                     MqttMessage publishMessage = new MqttMessage(messagePayload);
                     client.publish(mqttResponseTopic, publishMessage);
                 }
