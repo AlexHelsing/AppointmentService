@@ -11,6 +11,7 @@ This service is designed to handle appointments for our dentist application. Pat
 
 - Eclipse Paho MQTT - The service interacts with the REST API using the MQTT.
 - MongoDB Database: All appointment data is stored in a MongoDB database.
+- Redis Cache: All appointments data is stored in a redis cache for faster fetching of data.
 - Java (Gradle for build automation)
 
 ## Installation
