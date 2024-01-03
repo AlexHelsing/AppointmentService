@@ -301,6 +301,8 @@ public class MqttMain {
                 FindOneAndUpdateOptions options = new FindOneAndUpdateOptions().returnDocument(ReturnDocument.AFTER);
                 Appointment updatedDocument = collection.findOneAndUpdate(query, update, options);
 
+                System.out.println("updatedDocument: " + updatedDocument);
+
                 if (updatedDocument != null) {
                     appointmentCache.updateCache(updatedDocument, updatedDocument.getClinicId().toString(), String.valueOf(appointment_id));
                     String mqttResponseTopic = String.format("Dentist/%s/cancel_appointment/res", responseTopic);
