@@ -8,6 +8,10 @@ public class AppConfigExample {
 
     private static final String MQTT_PASSWORD = "<password>";
 
+    private static final String DATABASE_NAME = "<DBNAME>";
+
+    private static final String COLLECTION_NAME = "<COLLECTIONNAME>";
+
 
     public static String getMongodbUri(){
         return MONGODB_URI;
@@ -20,6 +24,14 @@ public class AppConfigExample {
     }
     public static String getMqttPassword(){
         return MQTT_PASSWORD;
+    }
+
+    public static String getMongoDbName(){
+        return DATABASE_NAME;
+    }
+
+    public static String getMongoDbCollectionName(){
+        return COLLECTION_NAME;
     }
 
 }

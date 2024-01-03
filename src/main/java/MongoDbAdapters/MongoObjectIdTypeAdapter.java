@@ -1,3 +1,5 @@
+package MongoDbAdapters;
+
 import java.io.IOException;
 import java.lang.reflect.Type;
 
