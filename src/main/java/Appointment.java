@@ -1,26 +1,32 @@
+import GsonDeserializers.ObjectIdDeserializer;
+import MongoDbAdapters.LocalDateTypeAdapter;
+import MongoDbAdapters.LocalTimeTypeAdapter;
+import MongoDbAdapters.MongoObjectIdTypeAdapter;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 
-import org.bson.codecs.pojo.annotations.BsonProperty;
+import com.google.gson.annotations.Expose;
 import org.bson.types.ObjectId;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
 
 public class Appointment {
+    @Expose
     private ObjectId _id;
+    @Expose
     private ObjectId patientId;
-
+    @Expose
     private ObjectId dentistId;
-
+    @Expose
     private ObjectId clinicId;
-
+    @Expose
     private boolean booked;
-
+    @Expose
     private LocalDate date;
-
+    @Expose
     private LocalTime startTime;
-
+    @Expose
     private LocalTime endTime;
 
     public Appointment() {
@@ -39,6 +45,15 @@ public class Appointment {
 
     public ObjectId getPatientId() {
         return patientId;
+    }
+
+    public String getPatientIdString(){
+        if(patientId == null){
+            return null;
+        }
+        else{
+            return patientId.toString();
+        }
     }
 
     public void setPatientId(ObjectId patientId) {
@@ -120,6 +135,7 @@ public class Appointment {
                 .registerTypeAdapter(ObjectId.class, new MongoObjectIdTypeAdapter())
                 .registerTypeAdapter(LocalDate.class, new LocalDateTypeAdapter())
                 .registerTypeAdapter(LocalTime.class, new LocalTimeTypeAdapter())
+                .registerTypeAdapter(ObjectId.class, new ObjectIdDeserializer())
                 .create();
         return gson.toJson(this);
     }
