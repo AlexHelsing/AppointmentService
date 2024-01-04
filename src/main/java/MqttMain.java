@@ -114,6 +114,13 @@ public class MqttMain {
                     client.publish(mqttResponseTopic, publishMessage);
                     return;
                 }
+                if (appointment.isBooked()) {
+                    byte[] messagePayload = new Result(409, "Appointment is already booked").toJSON()
+                            .getBytes();
+                    MqttMessage publishMessage = new MqttMessage(messagePayload);
+                    client.publish(mqttResponseTopic, publishMessage);
+                    return;
+                }
                 // Booking the appointment
                 Document query = new Document("_id", new ObjectId(appointment_id));
                 Document update = new Document("$set", new Document("patientId", new ObjectId(patient_id))
@@ -122,7 +129,7 @@ public class MqttMain {
                 Appointment updatedDocument = collection.findOneAndUpdate(query, update, options);
 
                 if (updatedDocument != null) {
-                    String result = new Result(200, "Appointment was booked").toJSON();
+                    String result = new Result(201, "Appointment was booked", updatedDocument).toJSON();
                     byte[] bookedMessage = result.getBytes();
                     MqttMessage publishMessage = new MqttMessage(bookedMessage);
                     client.publish(mqttResponseTopic, publishMessage);
@@ -175,6 +182,13 @@ public class MqttMain {
                     client.publish(mqttResponseTopic, publishMessage);
                     return;
                 }
+                if(!appointment.isBooked()) {
+                    String result = new Result(409, "Appointment with given id has already been cancelled.").toJSON();
+                    MqttMessage publishMessage = new MqttMessage(result.getBytes());
+                    String mqttResponseTopic = String.format("Patient/%s/cancel_appointment/res", response_topic);
+                    client.publish(mqttResponseTopic, publishMessage);
+                    return;
+                }
                 Document query = new Document("_id", new ObjectId(appointment_id));
                 Document update = new Document("$set", new Document("patientId", null)
                         .append("booked", false));
@@ -182,7 +196,7 @@ public class MqttMain {
                 Appointment updatedDocument = collection.findOneAndUpdate(query, update, options);
 
                 if (updatedDocument != null) {
-                    String result = new Result(200, "Appointment was cancelled").toJSON();
+                    String result = new Result(200, "Appointment was cancelled", appointment).toJSON();
                     MqttMessage publishMessage = new MqttMessage(result.getBytes());
                     String mqttResponseTopic = String.format("Patient/%s/cancel_appointment/res", response_topic);
                     client.publish(mqttResponseTopic, publishMessage);
@@ -271,7 +285,7 @@ public class MqttMain {
 
                 if (!appointment.isBooked()) {
                     String mqttResponseTopic = String.format("Dentist/%s/cancel_appointment/res", responseTopic);
-                    byte[] messagePayload = new Result(403, "Appointment with given is not booked").toJSON().getBytes();
+                    byte[] messagePayload = new Result(409, "Appointment with given is not booked").toJSON().getBytes();
                     MqttMessage publishMessage = new MqttMessage(messagePayload);
                     client.publish(mqttResponseTopic, publishMessage);
                     return;
@@ -289,7 +303,7 @@ public class MqttMain {
                 if (updatedDocument != null) {
 
                     String mqttResponseTopic = String.format("Dentist/%s/cancel_appointment/res", responseTopic);
-                    byte[] messagePayload = new Result(200, patient_id).toJSON().getBytes();
+                    byte[] messagePayload = new Result(200, "Appointment was cancelled successfully", appointment).toJSON().getBytes();
                     MqttMessage publishMessage = new MqttMessage(messagePayload);
                     client.publish(mqttResponseTopic, publishMessage);
                 }

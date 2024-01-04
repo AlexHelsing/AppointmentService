@@ -1,9 +1,9 @@
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import org.bson.Document;
+import org.bson.types.ObjectId;
+
+import java.time.LocalDate;
+import java.time.LocalTime;
 
 public class Result {
     public  Result() {}
@@ -13,6 +13,21 @@ public class Result {
         this.status = status;
     }
 
+    public Result(int status, String message, Appointment appointment) {
+       this.status = status;
+       this.message = message;
+       this.patientId = appointment.getPatientId();
+       this.dentistId = appointment.getDentistId();
+       this.date = appointment.getDate();
+       this.startTime = appointment.getStartTime();
+       this.endTime = appointment.getEndTime();
+    }
+
+    private ObjectId patientId;
+    private ObjectId dentistId;
+    private LocalDate date;
+    private LocalTime startTime;
+    private LocalTime endTime;
     private int status;
     private String message;
 
@@ -38,7 +53,31 @@ public class Result {
     public String toJSON() {
         GsonBuilder gsonBuilder = new GsonBuilder();
         gsonBuilder.setPrettyPrinting();
-        Gson gson = gsonBuilder.create();
+        Gson gson = gsonBuilder
+                .registerTypeAdapter(ObjectId.class, new MongoObjectIdTypeAdapter())
+                .registerTypeAdapter(LocalDate.class, new LocalDateTypeAdapter())
+                .registerTypeAdapter(LocalTime.class, new LocalTimeTypeAdapter())
+                .create();
         return gson.toJson(this);
+    }
+
+    public ObjectId getPatientId() {
+        return patientId;
+    }
+
+    public ObjectId getDentistId() {
+        return dentistId;
+    }
+
+    public LocalDate getDate() {
+        return date;
+    }
+
+    public LocalTime getStartTime() {
+        return startTime;
+    }
+
+    public LocalTime getEndTime() {
+        return endTime;
     }
 }
