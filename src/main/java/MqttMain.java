@@ -16,7 +16,11 @@ import org.bson.types.ObjectId;
 import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -330,10 +334,15 @@ public class MqttMain {
                     // GET DATA FROM MONGODB INSTEAD
                     ArrayList<Appointment> matchingAppointmentsDB = new ArrayList<>();
 
-                    // Query Appointments based on dentistIds
+                    LocalDate today = LocalDate.now(); // Or specify the date you want
+                    ZoneId defaultZoneId = ZoneId.systemDefault();
+                    Instant instant = today.atStartOfDay(defaultZoneId).toInstant();
+                    Date queryDate = Date.from(instant);
+                    // Query Appointments based on clinicId
+                    Bson dateFilter = Filters.gt("date", queryDate);
                     Bson clinicIdFilter = Filters.in("clinicId", new ObjectId(clinicId));
                     Bson isBookedFilter = Filters.eq("booked", false);
-                    Bson combinedFilter = Filters.and(clinicIdFilter, isBookedFilter);
+                    Bson combinedFilter = Filters.and(clinicIdFilter, isBookedFilter, dateFilter);
 
                     collection.find(combinedFilter).into(matchingAppointmentsDB);
                     // CACHE THE DATA TO REDIS
