@@ -103,32 +103,45 @@ public class MqttMain {
                 String appointment_id = Utilities.extractAppointmentId(payload);
                 String mqttResponseTopic = String.format("Patient/%s/make_appointment/res", responseTopic);
 
-                // Booking the appointment
-                Document query = new Document("_id", new ObjectId(appointment_id));
-                Document update = new Document("$set", new Document("patientId", new ObjectId(patient_id))
-                        .append("booked", true));
-                FindOneAndUpdateOptions options = new FindOneAndUpdateOptions().returnDocument(ReturnDocument.AFTER);
-                Appointment updatedDocument = collection.findOneAndUpdate(query, update, options);
+                try{
+                    Document query = new Document("_id", new ObjectId(appointment_id));
+                    Appointment appointment = collection.find(query).first();
+                    assert appointment != null;
+                    if(appointment.isBooked()){
+                        String result = new Result(409, "Appointment is already booked").toJSON();
+                        byte[] bookedMessage = result.getBytes();
+                        MqttMessage publishMessage = new MqttMessage(bookedMessage);
+                        client.publish(mqttResponseTopic, publishMessage);
+                    } else{
+                        // Booking the appointment
+                        Document queryBooking = new Document("_id", new ObjectId(appointment_id));
+                        Document update = new Document("$set", new Document("patientId", new ObjectId(patient_id))
+                                .append("booked", true));
+                        FindOneAndUpdateOptions options = new FindOneAndUpdateOptions().returnDocument(ReturnDocument.AFTER);
+                        Appointment updatedDocument = collection.findOneAndUpdate(queryBooking, update, options);
 
-                if (updatedDocument != null) {
-                    //System.out.println(" New document is: " +updatedDocument);
-                    String clinic_id = String.valueOf(updatedDocument.getClinicId());
-                    appointmentCache.updateCache(updatedDocument, clinic_id, appointment_id);
-                    String result = new Result(200, "Appointment was booked").toJSON();
-                    byte[] bookedMessage = result.getBytes();
-                    MqttMessage publishMessage = new MqttMessage(bookedMessage);
-                    client.publish(mqttResponseTopic, publishMessage);
+                        if (updatedDocument != null) {
+                            //System.out.println(" New document is: " +updatedDocument);
+                            String clinic_id = String.valueOf(updatedDocument.getClinicId());
+                            appointmentCache.updateCache(updatedDocument, clinic_id, appointment_id);
+                            String result = new Result(200, "Appointment was booked").toJSON();
+                            byte[] bookedMessage = result.getBytes();
+                            MqttMessage publishMessage = new MqttMessage(bookedMessage);
+                            client.publish(mqttResponseTopic, publishMessage);
+                        }
+                        else{
+                            byte[] messagePayload = new Result(404, "Appointment with given id was not found.").toJSON()
+                                    .getBytes();
+                            MqttMessage publishMessage = new MqttMessage(messagePayload);
+                            client.publish(mqttResponseTopic, publishMessage);
+                        }
+                    }} catch (Exception e) {
+                    throw new RuntimeException(e);
                 }
-                else{
-                    byte[] messagePayload = new Result(404, "Appointment with given id was not found.").toJSON()
-                            .getBytes();
-                    MqttMessage publishMessage = new MqttMessage(messagePayload);
-                    client.publish(mqttResponseTopic, publishMessage);
-                }
-            } catch (Exception e) {
-                throw new RuntimeException(e);
             }
-        }));
+            catch (Exception e){
+                throw new RuntimeException(e);
+            }}));
         client.subscribe(patientGetAppointments, 1, (topic, message) -> service.submit(() -> {
             String payload = Utilities.payloadToString(message.getPayload());
             System.out.println("Received message on " + topic + " \nMessage: " + payload);
