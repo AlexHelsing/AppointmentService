@@ -138,6 +138,28 @@ public class MqttMain {
                     }} catch (Exception e) {
                     throw new RuntimeException(e);
                 }
+                if (appointment.isBooked()) {
+                    byte[] messagePayload = new Result(409, "Appointment is already booked").toJSON()
+                            .getBytes();
+                    MqttMessage publishMessage = new MqttMessage(messagePayload);
+                    client.publish(mqttResponseTopic, publishMessage);
+                    return;
+                }
+                // Booking the appointment
+                Document query = new Document("_id", new ObjectId(appointment_id));
+                Document update = new Document("$set", new Document("patientId", new ObjectId(patient_id))
+                        .append("booked", true));
+                FindOneAndUpdateOptions options = new FindOneAndUpdateOptions().returnDocument(ReturnDocument.AFTER);
+                Appointment updatedDocument = collection.findOneAndUpdate(query, update, options);
+
+                if (updatedDocument != null) {
+                    String result = new Result(201, "Appointment was booked", updatedDocument).toJSON();
+                    byte[] bookedMessage = result.getBytes();
+                    MqttMessage publishMessage = new MqttMessage(bookedMessage);
+                    client.publish(mqttResponseTopic, publishMessage);
+                }
+            } catch (Exception e) {
+                throw new RuntimeException(e);
             }
             catch (Exception e){
                 throw new RuntimeException(e);
@@ -205,6 +227,13 @@ public class MqttMain {
 
                 if (appointment == null) {
                     String result = new Result(404, "Appointment with given id was not found.").toJSON();
+                    MqttMessage publishMessage = new MqttMessage(result.getBytes());
+                    String mqttResponseTopic = String.format("Patient/%s/cancel_appointment/res", response_topic);
+                    client.publish(mqttResponseTopic, publishMessage);
+                    return;
+                }
+                if(!appointment.isBooked()) {
+                    String result = new Result(409, "Appointment with given id has already been cancelled.").toJSON();
                     MqttMessage publishMessage = new MqttMessage(result.getBytes());
                     String mqttResponseTopic = String.format("Patient/%s/cancel_appointment/res", response_topic);
                     client.publish(mqttResponseTopic, publishMessage);
@@ -308,7 +337,7 @@ public class MqttMain {
 
                 if (!appointment.isBooked()) {
                     String mqttResponseTopic = String.format("Dentist/%s/cancel_appointment/res", responseTopic);
-                    byte[] messagePayload = new Result(403, "Appointment with given is not booked").toJSON().getBytes();
+                    byte[] messagePayload = new Result(409, "Appointment with given is not booked").toJSON().getBytes();
                     MqttMessage publishMessage = new MqttMessage(messagePayload);
                     client.publish(mqttResponseTopic, publishMessage);
                     return;
@@ -326,7 +355,7 @@ public class MqttMain {
                 if (updatedDocument != null) {
                     appointmentCache.updateCache(updatedDocument, updatedDocument.getClinicId().toString(), String.valueOf(appointment_id));
                     String mqttResponseTopic = String.format("Dentist/%s/cancel_appointment/res", responseTopic);
-                    byte[] messagePayload = new Result(200, patient_id).toJSON().getBytes();
+                    byte[] messagePayload = new Result(200, "Appointment was cancelled successfully", appointment).toJSON().getBytes();
                     MqttMessage publishMessage = new MqttMessage(messagePayload);
                     client.publish(mqttResponseTopic, publishMessage);
                 }

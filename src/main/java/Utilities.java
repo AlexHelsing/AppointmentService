@@ -36,7 +36,7 @@ public class Utilities {
 
                 appointment.setId(new ObjectId());
 
-                String dentistId_string = element.get("dentist_id").asText();
+                String dentistId_string = element.get("dentistId").asText();
                 ObjectId dentistId = new ObjectId(dentistId_string);
                 appointment.setDentistId(dentistId);
                 // Appointment Date
@@ -57,7 +57,7 @@ public class Utilities {
                 appointment.setBooked(isBooked);
 
                 // set clinicId
-                String clinicId_string = element.get("clinic_id").asText();
+                String clinicId_string = element.get("clinicId").asText();
                 ObjectId clinicId = new ObjectId(clinicId_string);
                 appointment.setClinicId(clinicId);
 
@@ -97,9 +97,9 @@ public class Utilities {
 
         if (jsonNode.isArray()) {
             JsonNode lastElement = jsonNode.get(jsonNode.size() - 1);
-            responseTopic = lastElement.get("response_topic").asText();
+            responseTopic = lastElement.get("responseTopic").asText();
         } else {
-            responseTopic = jsonNode.get("response_topic").asText();
+            responseTopic = jsonNode.get("responseTopic").asText();
         }
 
         return responseTopic;
@@ -109,14 +109,14 @@ public class Utilities {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode jsonNode = objectMapper.readTree(payload);
 
-        return jsonNode.get("patient_id").asText();
+        return jsonNode.get("patientId").asText();
     }
 
     public static String extractClinicId(String payload) throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode jsonNode = objectMapper.readTree(payload);
 
-        return jsonNode.get("clinic_id").asText();
+        return jsonNode.get("clinicId").asText();
     }
 
     // TODO: Fix all the mix of camelcase and snakecase.
@@ -131,14 +131,14 @@ public class Utilities {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode jsonNode = objectMapper.readTree(payload);
 
-        return jsonNode.get("appointment_id").asText();
+        return jsonNode.get("appointmentId").asText();
     }
 
     public static String extractDentistId(String payload) throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode jsonNode = objectMapper.readTree(payload);
 
-        return jsonNode.get("dentist_id").asText();
+        return jsonNode.get("dentistId").asText();
     }
 
     public static MongoCollection<Appointment> getCollection(MongoClient mongoClient) {
