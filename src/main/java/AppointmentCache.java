@@ -96,16 +96,15 @@ public class AppointmentCache {
     }
 
     // Use for eventual deletion from cache.. The reason it returns a long is because of jedis.del function
-    public long removeFromCache(Appointment appointment){
+    public void removeFromCache(Appointment appointment){
         try(Jedis jedis = jedisPool.getResource()) {
             String appointmentJson = appointment.toJSON();
             String key = "appointment:" + appointment.getClinicId() + ":booked:*:id:" + appointment.getId();
-            return jedis.del(key);
+            jedis.del(key);
         }
         catch (Exception e){
             e.printStackTrace();
         }
-        return 0;
     }
 
     public void updateCache(Appointment updatedAppointment, String clinicId, String appointmentId) {
