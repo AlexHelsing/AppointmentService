@@ -1,5 +1,7 @@
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.mongodb.client.*;
+import com.mongodb.client.FindIterable;
+import com.mongodb.client.MongoClient;
+import com.mongodb.client.MongoClients;
+import com.mongodb.client.MongoCollection;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.FindOneAndUpdateOptions;
 import com.mongodb.client.model.ReturnDocument;
@@ -13,23 +15,21 @@ import org.bson.conversions.Bson;
 import org.bson.types.ObjectId;
 import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
+
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-
-import javax.net.ssl.SSLSocketFactory;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.ThreadPoolExecutor;
 
 import static com.mongodb.MongoClientSettings.getDefaultCodecRegistry;
 import static org.bson.codecs.configuration.CodecRegistries.fromProviders;
 import static org.bson.codecs.configuration.CodecRegistries.fromRegistries;
 
 public class MqttMain {
-
-    // MongoDB
-    static String MongoDbURI = AppConfig.getMongodbUri();
 
     // MQTT Connection
     static String MqttURI = AppConfig.getMqttUri();
@@ -91,6 +91,7 @@ public class MqttMain {
         // Setting the DB connection
         MongoClient mongoClient = MongoClients.create(AppConfig.getMongodbUri());
         MongoCollection<Appointment> collection = Utilities.getCollection(mongoClient);
+        AppointmentCache appointmentCache = new AppointmentCache();
 
         // Patient Subscriptions
         client.subscribe(patientMakeAppointment, 1, (topic, message) -> service.submit(() -> {
@@ -102,17 +103,40 @@ public class MqttMain {
                 String appointment_id = Utilities.extractAppointmentId(payload);
                 String mqttResponseTopic = String.format("Patient/%s/make_appointment/res", responseTopic);
 
-                // Find matching appointmentId in db, append patientID + change boolean isBooked
-                // to "true"
-                Bson filter = Filters.eq("_id", new ObjectId(appointment_id));
-                Appointment appointment = collection.find(filter).first();
+                try{
+                    Document query = new Document("_id", new ObjectId(appointment_id));
+                    Appointment appointment = collection.find(query).first();
+                    assert appointment != null;
+                    if(appointment.isBooked()){
+                        String result = new Result(409, "Appointment is already booked").toJSON();
+                        byte[] bookedMessage = result.getBytes();
+                        MqttMessage publishMessage = new MqttMessage(bookedMessage);
+                        client.publish(mqttResponseTopic, publishMessage);
+                    } else{
+                        // Booking the appointment
+                        Document queryBooking = new Document("_id", new ObjectId(appointment_id));
+                        Document update = new Document("$set", new Document("patientId", new ObjectId(patient_id))
+                                .append("booked", true));
+                        FindOneAndUpdateOptions options = new FindOneAndUpdateOptions().returnDocument(ReturnDocument.AFTER);
+                        Appointment updatedDocument = collection.findOneAndUpdate(queryBooking, update, options);
 
-                if (appointment == null) {
-                    byte[] messagePayload = new Result(404, "Appointment with given id was not found.").toJSON()
-                            .getBytes();
-                    MqttMessage publishMessage = new MqttMessage(messagePayload);
-                    client.publish(mqttResponseTopic, publishMessage);
-                    return;
+                        if (updatedDocument != null) {
+                            //System.out.println(" New document is: " +updatedDocument);
+                            String clinic_id = String.valueOf(updatedDocument.getClinicId());
+                            appointmentCache.updateCache(updatedDocument, clinic_id, appointment_id);
+                            String result = new Result(200, "Appointment was booked").toJSON();
+                            byte[] bookedMessage = result.getBytes();
+                            MqttMessage publishMessage = new MqttMessage(bookedMessage);
+                            client.publish(mqttResponseTopic, publishMessage);
+                        }
+                        else{
+                            byte[] messagePayload = new Result(404, "Appointment with given id was not found.").toJSON()
+                                    .getBytes();
+                            MqttMessage publishMessage = new MqttMessage(messagePayload);
+                            client.publish(mqttResponseTopic, publishMessage);
+                        }
+                    }} catch (Exception e) {
+                    throw new RuntimeException(e);
                 }
                 if (appointment.isBooked()) {
                     byte[] messagePayload = new Result(409, "Appointment is already booked").toJSON()
@@ -137,7 +161,9 @@ public class MqttMain {
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
-        }));
+            catch (Exception e){
+                throw new RuntimeException(e);
+            }}));
         client.subscribe(patientGetAppointments, 1, (topic, message) -> service.submit(() -> {
             String payload = Utilities.payloadToString(message.getPayload());
             System.out.println("Received message on " + topic + " \nMessage: " + payload);
@@ -146,16 +172,40 @@ public class MqttMain {
                 String patient_id = Utilities.extractPatientId(payload);
                 String response_topic = Utilities.extractResponseTopic(payload);
 
-                Document query = new Document("patientId", new ObjectId(patient_id));
-                FindIterable<Appointment> matchingDocs = collection.find(query);
-                // Find and add all the matches of the query to docJsonList
-                List<String> docJsonList = new ArrayList<>();
-                for (Appointment doc : matchingDocs) {
-                    String docJson = doc.toJSON();
-                    docJsonList.add(docJson);
+                List<Appointment> matchingAppointmentsCache = appointmentCache.getPatientAppointments(patient_id);
+
+                if(matchingAppointmentsCache.isEmpty()){
+                    //System.out.println("Fetching patient data from mongoDb..");
+                    ArrayList<Appointment> matchingAppointmentsDb = new ArrayList<>();
+                    Document query = new Document("patientId", new ObjectId(patient_id));
+                    collection.find(query).into(matchingAppointmentsDb);
+                    // Find and add all the matches of the query to docJsonList
+                    for (Appointment doc : matchingAppointmentsDb) {
+                    appointmentCache.cacheAppointment(doc, doc.getClinicId().toHexString());
+                    //System.out.println("Added doc to cache");
+                    }
+                    ArrayList<String> jsonAppointments = new ArrayList<>();
+                    for (Appointment appointment : matchingAppointmentsDb) {
+                    String jsonAppointment = appointment.toJSON();
+                    jsonAppointments.add(jsonAppointment);
+                    }
+                    // Create Json format, format to MQTT message and publish to response topic
+                    String jsonArray = "[" + String.join(",", jsonAppointments) + "]";
+                    String mqttResponseTopic = String.format("Patient/%s/get_appointments/res", response_topic);
+                    byte[] messagePayload = jsonArray.getBytes();
+                    MqttMessage publishMessage = new MqttMessage(messagePayload);
+                    client.publish(mqttResponseTopic, publishMessage);
+                    return;
+                    }
+
+                //System.out.println("Patient data from cache");
+                ArrayList<String> jsonAppointments = new ArrayList<>();
+                for (Appointment appointment : matchingAppointmentsCache) {
+                    String jsonAppointment = appointment.toJSON();
+                    jsonAppointments.add(jsonAppointment);
                 }
                 // Create Json format, format to MQTT message and publish to response topic
-                String jsonArray = "[" + String.join(",", docJsonList) + "]";
+                String jsonArray = "[" + String.join(",", jsonAppointments) + "]";
                 String mqttResponseTopic = String.format("Patient/%s/get_appointments/res", response_topic);
                 byte[] messagePayload = jsonArray.getBytes();
                 MqttMessage publishMessage = new MqttMessage(messagePayload);
@@ -196,7 +246,9 @@ public class MqttMain {
                 Appointment updatedDocument = collection.findOneAndUpdate(query, update, options);
 
                 if (updatedDocument != null) {
-                    String result = new Result(200, "Appointment was cancelled", appointment).toJSON();
+                    String clinic_id = String.valueOf(updatedDocument.getClinicId());
+                    appointmentCache.updateCache(updatedDocument, clinic_id, appointment_id);
+                    String result = new Result(200, "Appointment was cancelled").toJSON();
                     MqttMessage publishMessage = new MqttMessage(result.getBytes());
                     String mqttResponseTopic = String.format("Patient/%s/cancel_appointment/res", response_topic);
                     client.publish(mqttResponseTopic, publishMessage);
@@ -208,8 +260,6 @@ public class MqttMain {
         // Dentist subscriptions
         client.subscribe(dentistAddAppointmentSlot, 1, (topic, message) -> service.submit(() -> {
             String payload = Utilities.payloadToString(message.getPayload());
-            // System.out.println("Received message on " + topic + " \nMessage: " +
-            // payload);
             try {
                 // Read from JSON and create a POJO object to insert to database
                 ArrayList<Appointment> appointments = Utilities.convertToAppointments(payload);
@@ -220,6 +270,9 @@ public class MqttMain {
 
                 // If insertion is acknowledged, publish to response topic
                 if (newAppointments.wasAcknowledged()) {
+                    for (Appointment appointment : appointments) {
+                        appointmentCache.cacheAppointment(appointment, appointment.getClinicId().toString());
+                    }
                     String mqttResponseTopic = String.format("Dentist/%s/post_slots/res", responseTopic);
 
                     Result result = new Result(201, "Appointment slots were added successfully.");
@@ -268,7 +321,6 @@ public class MqttMain {
             System.out.println("Received message on " + topic + " \nMessage: " + payload);
             try {
                 String responseTopic = Utilities.extractResponseTopic(payload);
-                ObjectId dentist_id = new ObjectId(Utilities.extractDentistId(payload));
                 ObjectId appointment_id = new ObjectId(Utilities.extractAppointmentId(payload));
 
                 Bson filter = Filters.eq("_id", appointment_id);
@@ -290,7 +342,7 @@ public class MqttMain {
                     client.publish(mqttResponseTopic, publishMessage);
                     return;
                 }
-                // need for realtime shit
+
                 String patient_id = appointment.getPatientId().toString();
                 Document query = new Document("_id", appointment_id);
                 Document update = new Document("$set", new Document("patientId", null)
@@ -301,7 +353,7 @@ public class MqttMain {
                 System.out.println("updatedDocument: " + updatedDocument);
 
                 if (updatedDocument != null) {
-
+                    appointmentCache.updateCache(updatedDocument, updatedDocument.getClinicId().toString(), String.valueOf(appointment_id));
                     String mqttResponseTopic = String.format("Dentist/%s/cancel_appointment/res", responseTopic);
                     byte[] messagePayload = new Result(200, "Appointment was cancelled successfully", appointment).toJSON().getBytes();
                     MqttMessage publishMessage = new MqttMessage(messagePayload);
@@ -319,37 +371,72 @@ public class MqttMain {
                 String clinicId = Utilities.extractClinicId(payload);
                 String responseTopic = Utilities.extractResponseTopic(payload);
 
-                // Query Appointments based on dentistIds
-                Bson clinicIdFilter = Filters.in("clinicId", new ObjectId(clinicId));
-                Bson isBookedFilter = Filters.eq("booked", false);
-                Bson combinedFilter = Filters.and(clinicIdFilter, isBookedFilter);
+                List<Appointment> matchingAppointmentsCache = appointmentCache.getClinicAppointments(clinicId);
 
-                ArrayList<Appointment> matchingAppointments = new ArrayList<>();
-                collection.find(combinedFilter).into(matchingAppointments);
-                // System.out.println("Matching appointments: " + matchingAppointments);
+                if(matchingAppointmentsCache.isEmpty()) {
+                    // TODO: Make a method out of this for readability in the future. Looks like dogshit now
+                    //System.out.println("Get from mongoDB instead");
+                    // GET DATA FROM MONGODB INSTEAD
+                    ArrayList<Appointment> matchingAppointmentsDB = new ArrayList<>();
 
-                // Structure payload as an array of JSONs
-                ArrayList<String> jsonAppointments = new ArrayList<>();
-                for (Appointment appointment : matchingAppointments) {
+                    LocalDate today = LocalDate.now(); // Or specify the date you want
+                    ZoneId defaultZoneId = ZoneId.systemDefault();
+                    Instant instant = today.atStartOfDay(defaultZoneId).toInstant();
+                    Date queryDate = Date.from(instant);
+                    // Query Appointments based on clinicId
+                    Bson dateFilter = Filters.gt("date", queryDate);
+                    Bson clinicIdFilter = Filters.in("clinicId", new ObjectId(clinicId));
+                    Bson isBookedFilter = Filters.eq("booked", false);
+                    Bson combinedFilter = Filters.and(clinicIdFilter, isBookedFilter, dateFilter);
 
-                    String jsonAppointment = appointment.toJSON();
-                    jsonAppointments.add(jsonAppointment);
+                    collection.find(combinedFilter).into(matchingAppointmentsDB);
+                    // CACHE THE DATA TO REDIS
+                    for (Appointment appointment : matchingAppointmentsDB) {
+                        appointmentCache.cacheAppointment(appointment, clinicId);
+                        //System.out.println("Caching..");
+                    }
+                    ArrayList<String> jsonAppointments = new ArrayList<>();
+                    for (Appointment appointment : matchingAppointmentsDB) {
+                        String jsonAppointment = appointment.toJSON();
+                        jsonAppointments.add(jsonAppointment);
+                    }
+
+                    Result result = new Result(200, "Appointments were retrieved successfully.");
+                    String resultJson = result.toJSON();
+
+                    String resPayload;
+                    if (jsonAppointments.isEmpty()) {
+                        resPayload = "[" + resultJson + "]";
+                    } else {
+                        resPayload = "[" + String.join(", ", jsonAppointments) + "," + resultJson + "]";
+                    }
+
+                    String mqttResponseTopic = String.format("Clinic/%s/get_appointments/res", responseTopic);
+                    byte[] messagePayload = resPayload.getBytes();
+                    MqttMessage publishMessage = new MqttMessage(messagePayload);
+                    client.publish(mqttResponseTopic, publishMessage);
+                    return;
                 }
+                else {
+                    //System.out.println("Fetching from redis cache");
+                    // If found in cache, we do below code.
+                    // Structure payload as an array of JSONs
+                    ArrayList<String> jsonAppointments = new ArrayList<>();
+                    for (Appointment appointment : matchingAppointmentsCache) {
+                        String jsonAppointment = appointment.toJSON();
+                        jsonAppointments.add(jsonAppointment);
+                    }
+                    Result result = new Result(200, "Appointments were retrieved successfully.");
+                    String resultJson = result.toJSON();
 
-                Result result = new Result(200, "Appointments were retrieved successfully.");
-                String resultJson = result.toJSON();
-
-                String resPayload;
-                if (jsonAppointments.isEmpty()) {
-                    resPayload = "[" + resultJson + "]";
-                } else {
+                    String resPayload;
                     resPayload = "[" + String.join(", ", jsonAppointments) + "," + resultJson + "]";
-                }
 
-                String mqttResponseTopic = String.format("Clinic/%s/get_appointments/res", responseTopic);
-                byte[] messagePayload = resPayload.getBytes();
-                MqttMessage publishMessage = new MqttMessage(messagePayload);
-                client.publish(mqttResponseTopic, publishMessage);
+                    String mqttResponseTopic = String.format("Clinic/%s/get_appointments/res", responseTopic);
+                    byte[] messagePayload = resPayload.getBytes();
+                    MqttMessage publishMessage = new MqttMessage(messagePayload);
+                    client.publish(mqttResponseTopic, publishMessage);
+                }
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }

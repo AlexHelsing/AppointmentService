@@ -119,6 +119,14 @@ public class Utilities {
         return jsonNode.get("clinicId").asText();
     }
 
+    // TODO: Fix all the mix of camelcase and snakecase.
+    public static String extractClinicIdSpecial(String payload) throws JsonProcessingException {
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode jsonNode = objectMapper.readTree(payload);
+
+        return jsonNode.get("Clinic").asText();
+    }
+
     public static String extractAppointmentId(String payload) throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode jsonNode = objectMapper.readTree(payload);
@@ -134,7 +142,7 @@ public class Utilities {
     }
 
     public static MongoCollection<Appointment> getCollection(MongoClient mongoClient) {
-        MongoDatabase database = mongoClient.getDatabase("Appointments").withCodecRegistry(MqttMain.pojoCodecRegistry);
-        return database.getCollection("appointments", Appointment.class);
+        MongoDatabase database = mongoClient.getDatabase(AppConfig.getMongoDbName()).withCodecRegistry(MqttMain.pojoCodecRegistry);
+        return database.getCollection(AppConfig.getMongoDbCollectionName(), Appointment.class);
     }
 }
