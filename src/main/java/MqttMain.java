@@ -241,6 +241,9 @@ public class MqttMain {
 
                 // If insertion is acknowledged, publish to response topic
                 if (newAppointments.wasAcknowledged()) {
+                    for (Appointment appointment : appointments) {
+                        appointmentCache.cacheAppointment(appointment, appointment.getClinicId().toString());
+                    }
                     String mqttResponseTopic = String.format("Dentist/%s/post_slots/res", responseTopic);
 
                     Result result = new Result(201, "Appointment slots were added successfully.");
