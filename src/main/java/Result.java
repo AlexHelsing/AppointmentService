@@ -1,3 +1,6 @@
+import MongoDbAdapters.LocalDateTypeAdapter;
+import MongoDbAdapters.LocalTimeTypeAdapter;
+import MongoDbAdapters.MongoObjectIdTypeAdapter;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import org.bson.types.ObjectId;

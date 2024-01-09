@@ -129,6 +129,13 @@ public class MqttMain {
                             MqttMessage publishMessage = new MqttMessage(bookedMessage);
                             client.publish(mqttResponseTopic, publishMessage);
                         }
+                        if (appointment.isBooked()) {
+                            byte[] messagePayload = new Result(409, "Appointment is already booked").toJSON()
+                                    .getBytes();
+                            MqttMessage publishMessage = new MqttMessage(messagePayload);
+                            client.publish(mqttResponseTopic, publishMessage);
+                            return;
+                        }
                         else{
                             byte[] messagePayload = new Result(404, "Appointment with given id was not found.").toJSON()
                                     .getBytes();
@@ -137,13 +144,6 @@ public class MqttMain {
                         }
                     }} catch (Exception e) {
                     throw new RuntimeException(e);
-                }
-                if (appointment.isBooked()) {
-                    byte[] messagePayload = new Result(409, "Appointment is already booked").toJSON()
-                            .getBytes();
-                    MqttMessage publishMessage = new MqttMessage(messagePayload);
-                    client.publish(mqttResponseTopic, publishMessage);
-                    return;
                 }
                 // Booking the appointment
                 Document query = new Document("_id", new ObjectId(appointment_id));
@@ -161,9 +161,7 @@ public class MqttMain {
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
-            catch (Exception e){
-                throw new RuntimeException(e);
-            }}));
+            }));
         client.subscribe(patientGetAppointments, 1, (topic, message) -> service.submit(() -> {
             String payload = Utilities.payloadToString(message.getPayload());
             System.out.println("Received message on " + topic + " \nMessage: " + payload);
